@@ -1,0 +1,506 @@
+openapi: 3.0.3
+info:
+  title: Worker Collection Service API
+  description: OpenAPI-спецификация первого веб-сервиса для лабораторной работы 1 по СОА.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер разработки
+tags:
+  - name: Workers
+    description: CRUD-операции над элементами коллекции Worker.
+  - name: Worker collection operations
+    description: Дополнительные операции над коллекцией Worker.
+paths:
+  /workers:
+    get:
+      tags:
+        - Workers
+      summary: Получить список работников
+      description: Возвращает постраничный список работников с возможностью сортировки и фильтрации по любой комбинации полей Worker.
+      operationId: getWorkers
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Filter'
+      responses:
+        '200':
+          description: Список работников успешно получен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags:
+        - Workers
+      summary: Создать работника
+      description: Добавляет нового работника в коллекцию. Поля id и creationDate генерируются автоматически.
+      operationId: createWorker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerInput'
+      responses:
+        '201':
+          description: Работник успешно создан.
+          headers:
+            Location:
+              description: URL созданного работника.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /workers/{id}:
+    get:
+      tags:
+        - Workers
+      summary: Получить работника по id
+      operationId: getWorkerById
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Работник найден.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+        - Workers
+      summary: Обновить работника
+      description: Заменяет все редактируемые поля существующего работника. Поля id и creationDate не изменяются.
+      operationId: updateWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerInput'
+      responses:
+        '200':
+          description: Работник успешно обновлен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+        - Workers
+      summary: Удалить работника
+      operationId: deleteWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '204':
+          description: Работник успешно удален.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /workers/group-by-end-date:
+    get:
+      tags:
+        - Worker collection operations
+      summary: Сгруппировать работников по endDate
+      description: Группирует работников по полю endDate и возвращает количество элементов в каждой группе. Работники с null в endDate возвращаются отдельной группой.
+      operationId: countWorkersGroupedByEndDate
+      responses:
+        '200':
+          description: Группы успешно получены.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EndDateGroup'
+  /workers/search/by-name-prefix:
+    get:
+      tags:
+        - Worker collection operations
+      summary: Найти работников по префиксу имени
+      description: Возвращает работников, имя которых начинается с заданной подстроки.
+      operationId: findWorkersByNamePrefix
+      parameters:
+        - name: prefix
+          in: query
+          required: true
+          description: Префикс, который должен находиться в начале имени работника.
+          schema:
+            type: string
+            minLength: 1
+            example: Ann
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Список работников успешно получен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /workers/search/by-status-greater-than:
+    get:
+      tags:
+        - Worker collection operations
+      summary: Найти работников со статусом больше заданного
+      description: Возвращает работников, статус которых больше заданного значения согласно порядку объявления enum FIRED < RECOMMENDED_FOR_PROMOTION < PROBATION.
+      operationId: findWorkersByStatusGreaterThan
+      parameters:
+        - name: status
+          in: query
+          required: true
+          description: Пороговое значение статуса.
+          schema:
+            $ref: '#/components/schemas/Status'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Список работников успешно получен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+components:
+  parameters:
+    WorkerId:
+      name: id
+      in: path
+      required: true
+      description: Уникальный сгенерированный id работника.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        example: 1
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Номер страницы, начиная с 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+        example: 1
+    Size:
+      name: size
+      in: query
+      required: false
+      description: Количество элементов на странице.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        example: 20
+    Sort:
+      name: sort
+      in: query
+      required: false
+      description: >
+        Выражение сортировки. Можно передавать несколько раз. Формат:
+        field,direction. Поддерживаемые поля: id, name, coordinates.x,
+        coordinates.y, creationDate, salary, startDate, endDate, status,
+        organization.fullName, organization.annualTurnover, organization.type.
+        Направления сортировки: asc, desc.
+      schema:
+        type: array
+        items:
+          type: string
+          pattern: '^[A-Za-z0-9_.]+,(asc|desc)$'
+          example: salary,desc
+      style: form
+      explode: true
+    Filter:
+      name: filter
+      in: query
+      required: false
+      description: >
+        Выражение фильтрации. Можно передавать несколько раз, чтобы объединить
+        фильтры логическим AND. Формат: field:operator:value. Поддерживаемые
+        поля: id, name, coordinates.x, coordinates.y, creationDate, salary,
+        startDate, endDate, status, organization.fullName,
+        organization.annualTurnover, organization.type. Поддерживаемые
+        операторы: eq, ne, gt, gte, lt, lte, contains, startsWith, endsWith,
+        in, isNull, notNull. Для isNull и notNull часть value можно не указывать.
+      schema:
+        type: array
+        items:
+          type: string
+          example: salary:gt:50000
+      style: form
+      explode: true
+  responses:
+    BadRequest:
+      description: Запрос некорректен или нарушает ограничения полей.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Запрошенный работник не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Запрос нарушает ограничения целостности коллекции.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Worker:
+      type: object
+      required:
+        - id
+        - name
+        - coordinates
+        - creationDate
+        - salary
+        - startDate
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          readOnly: true
+          description: Уникальный сгенерированный id.
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          description: Имя работника. Не может быть null или пустой строкой.
+          example: Anna Smith
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Сгенерированные дата и время создания.
+          example: '2026-09-10T12:00:00Z'
+        salary:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Зарплата работника. Должна быть больше 0.
+          example: 75000
+        startDate:
+          type: string
+          format: date-time
+          description: Дата начала работы. Не может быть null.
+          example: '2025-03-01T09:00:00Z'
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата окончания работы. Может быть null.
+          example: '2026-03-01T18:00:00Z'
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+          nullable: true
+          description: Статус работника. Может быть null.
+          example: PROBATION
+        organization:
+          allOf:
+            - $ref: '#/components/schemas/Organization'
+          nullable: true
+          description: Организация работника. Может быть null.
+    WorkerInput:
+      type: object
+      required:
+        - name
+        - coordinates
+        - salary
+        - startDate
+      properties:
+        name:
+          type: string
+          minLength: 1
+          example: Anna Smith
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        salary:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 75000
+        startDate:
+          type: string
+          format: date-time
+          example: '2025-03-01T09:00:00Z'
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-03-01T18:00:00Z'
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+          nullable: true
+          example: PROBATION
+        organization:
+          allOf:
+            - $ref: '#/components/schemas/Organization'
+          nullable: true
+    Coordinates:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: integer
+          format: int32
+          maximum: 202
+          description: Максимально допустимое значение равно 202.
+          example: 120
+        y:
+          type: number
+          format: float
+          minimum: -992
+          exclusiveMinimum: true
+          description: Должно быть больше -992.
+          example: -12.5
+    Organization:
+      type: object
+      required:
+        - fullName
+        - annualTurnover
+        - type
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 1804
+          description: Полное название организации. Не может быть null или пустой строкой.
+          example: Public Trust Group
+        annualTurnover:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Должно быть больше 0.
+          example: 1250000
+        type:
+          $ref: '#/components/schemas/OrganizationType'
+    Status:
+      type: string
+      enum:
+        - FIRED
+        - RECOMMENDED_FOR_PROMOTION
+        - PROBATION
+      example: PROBATION
+    OrganizationType:
+      type: string
+      enum:
+        - PUBLIC
+        - TRUST
+        - PRIVATE_LIMITED_COMPANY
+        - OPEN_JOINT_STOCK_COMPANY
+      example: PUBLIC
+    WorkerPage:
+      type: object
+      required:
+        - items
+        - page
+        - size
+        - totalItems
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Worker'
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        size:
+          type: integer
+          minimum: 1
+          example: 20
+        totalItems:
+          type: integer
+          minimum: 0
+          example: 54
+        totalPages:
+          type: integer
+          minimum: 0
+          example: 3
+    EndDateGroup:
+      type: object
+      required:
+        - endDate
+        - count
+      properties:
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Ключ группы. Null означает работников без endDate.
+          example: '2026-03-01T18:00:00Z'
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 4
+    ErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-10T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: salary must be greater than 0
+        path:
+          type: string
+          example: /workers
