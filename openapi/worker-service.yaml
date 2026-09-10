@@ -11,6 +11,7 @@ tags:
     description: CRUD-операции над элементами коллекции Worker.
   - name: Worker collection operations
     description: Дополнительные операции над коллекцией Worker.
+  
 paths:
   /workers:
     get:
@@ -192,6 +193,75 @@ paths:
                 $ref: '#/components/schemas/WorkerPage'
         '400':
           $ref: '#/components/responses/BadRequest'
+  /workers/sum/salary:
+    get:
+      tags:
+        - Worker collection operations
+      summary: Сумма значений поля salary для всех работников
+      description: Возвращает сумму всех ненулевых значений поля `salary` по коллекции.
+      operationId: sumSalaries
+      responses:
+        '200':
+          description: Успешно вычислена сумма зарплат.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SumResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /workers/count/endDate/{endDate}:
+    get:
+      tags:
+        - Worker collection operations
+      summary: Количество работников с заданным endDate
+      description: Возвращает количество объектов, поле `endDate` которых равно заданному значению (ISO 8601).
+      operationId: countByEndDate
+      parameters:
+        - name: endDate
+          in: path
+          required: true
+          description: Значение endDate в формате ISO 8601 (date-time) или специальное значение `null` для подсчёта работников без endDate.
+          schema:
+            type: string
+            example: '2026-03-01T18:00:00Z'
+      responses:
+        '200':
+          description: Количество найденных работников.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /workers/count/salary/less/{threshold}:
+    get:
+      tags:
+        - Worker collection operations
+      summary: Количество работников с salary меньше заданного
+      description: Возвращает количество объектов, значение поля `salary` которых меньше заданного порога.
+      operationId: countSalaryLessThan
+      parameters:
+        - name: threshold
+          in: path
+          required: true
+          description: Пороговое значение зарплаты (целое, > 0).
+          schema:
+            type: integer
+            minimum: 0
+            example: 50000
+      responses:
+        '200':
+          description: Количество найденных работников.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  
 components:
   parameters:
     WorkerId:
@@ -199,6 +269,16 @@ components:
       in: path
       required: true
       description: Уникальный сгенерированный id работника.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        example: 1
+    WorkerIdPath:
+      name: workerId
+      in: path
+      required: true
+      description: Идентификатор работника в путевом параметре (целое > 0).
       schema:
         type: integer
         format: int32
@@ -262,6 +342,27 @@ components:
           example: salary:gt:50000
       style: form
       explode: true
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      description: Идентификатор организации (в этой спецификации используется `organization.fullName`).
+      schema:
+        type: string
+        minLength: 1
+        example: Public Trust Group
+    Coeff:
+      name: coeff
+      in: path
+      required: true
+      description: Коэффициент индексирования зарплаты (множитель > 0).
+      schema:
+        type: number
+        format: double
+        minimum: 0.0
+        exclusiveMinimum: true
+        example: 1.15
+    # HR-related params moved to hr-service.yaml
   responses:
     BadRequest:
       description: Запрос некорректен или нарушает ограничения полей.
@@ -289,8 +390,8 @@ components:
         - name
         - coordinates
         - creationDate
-        - salary
         - startDate
+        - status
       properties:
         id:
           type: integer
@@ -315,8 +416,9 @@ components:
         salary:
           type: integer
           format: int32
+          nullable: true
           minimum: 1
-          description: Зарплата работника. Должна быть больше 0.
+          description: Зарплата работника. Если указана, должна быть больше 0; может быть null.
           example: 75000
         startDate:
           type: string
@@ -330,10 +432,8 @@ components:
           description: Дата окончания работы. Может быть null.
           example: '2026-03-01T18:00:00Z'
         status:
-          allOf:
-            - $ref: '#/components/schemas/Status'
-          nullable: true
-          description: Статус работника. Может быть null.
+          $ref: '#/components/schemas/Status'
+          description: Статус работника. Не может быть null.
           example: PROBATION
         organization:
           allOf:
@@ -345,8 +445,8 @@ components:
       required:
         - name
         - coordinates
-        - salary
         - startDate
+        - status
       properties:
         name:
           type: string
@@ -357,6 +457,7 @@ components:
         salary:
           type: integer
           format: int32
+          nullable: true
           minimum: 1
           example: 75000
         startDate:
@@ -369,9 +470,7 @@ components:
           nullable: true
           example: '2026-03-01T18:00:00Z'
         status:
-          allOf:
-            - $ref: '#/components/schemas/Status'
-          nullable: true
+          $ref: '#/components/schemas/Status'
           example: PROBATION
         organization:
           allOf:
@@ -504,3 +603,22 @@ components:
         path:
           type: string
           example: /workers
+    SumResult:
+      type: object
+      required:
+        - sum
+      properties:
+        sum:
+          type: integer
+          format: int64
+          example: 250000
+    CountResult:
+      type: object
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 5

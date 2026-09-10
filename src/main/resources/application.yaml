@@ -1,3 +1,21 @@
 spring:
   application:
     name: SOA-Labs
+  web:
+    resources:
+      static-locations: classpath:/static/, file:./openapi/
+
+# Disable DataSource auto-configuration for running the app without DB
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+
+# Configure springdoc Swagger UI to expose both OpenAPI specs
+springdoc:
+  swagger-ui:
+    urls:
+      - name: Worker API
+        url: /worker-service.yaml
+      - name: HR API
+        url: /hr-service.yaml

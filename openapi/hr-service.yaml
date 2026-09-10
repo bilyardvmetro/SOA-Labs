@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+  title: HR Service API
+  description: OpenAPI-спецификация второго веб-сервиса (/hr) — операции увольнения и индексирования зарплат.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер разработки
+tags:
+  - name: HR
+    description: Операции индексирования/увольнения сотрудников.
+paths:
+  /hr/fire/{workerId}:
+    post:
+      tags:
+        - HR
+      summary: Уволить сотрудника
+      description: Устанавливает `status` работника в `FIRED` по указанному `workerId`.
+      operationId: fireWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Работник успешно уволен; возвращается обновлённый объект работника.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /hr/index/{workerId}/{coeff}:
+    post:
+      tags:
+        - HR
+      summary: Проиндексировать зарплату указанного сотрудника
+      description: Умножает текущую `salary` работника на `coeff`. Если `salary` равно null — возвращается 400.
+      operationId: indexWorkerSalary
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+        - $ref: '#/components/parameters/Coeff'
+      responses:
+        '200':
+          description: Зарплата успешно проиндексирована; возвращается обновлённый объект работника.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
+components:
+  parameters:
+    WorkerId:
+      name: workerId
+      in: path
+      required: true
+      description: Идентификатор работника (целое > 0).
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        example: 1
+    OrgId:
+      name: orgId
+      in: query
+      required: true
+      description: Полное имя организации, из которой должен быть уволен работник (используется `organization.fullName`).
+      schema:
+        type: string
+        minLength: 1
+        example: Public Trust Group
+    Coeff:
+      name: coeff
+      in: path
+      required: true
+      description: Коэффициент индексирования зарплаты (множитель > 0).
+      schema:
+        type: number
+        format: double
+        minimum: 0.0
+        exclusiveMinimum: true
+        example: 1.15
+  responses:
+    BadRequest:
+      description: Запрос некорректен или нарушает ограничения полей.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Запрошенный работник не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Worker:
+      type: object
+      required:
+        - id
+        - name
+        - coordinates
+        - creationDate
+        - startDate
+        - status
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          readOnly: true
+          description: Уникальный сгенерированный id.
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          description: Имя работника. Не может быть null или пустой строкой.
+          example: Anna Smith
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Сгенерированные дата и время создания.
+          example: '2026-09-10T12:00:00Z'
+        salary:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+          description: Зарплата работника. Если указана, должна быть больше 0; может быть null.
+          example: 75000
+        startDate:
+          type: string
+          format: date-time
+          description: Дата начала работы. Не может быть null.
+          example: '2026-03-01T09:00:00Z'
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата окончания работы. Может быть null.
+          example: '2026-09-10T18:00:00Z'
+        status:
+          $ref: '#/components/schemas/Status'
+          description: Статус работника. Не может быть null.
+          example: PROBATION
+        organization:
+          allOf:
+            - $ref: '#/components/schemas/Organization'
+          nullable: true
+          description: Организация работника. Может быть null.
+    Coordinates:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: integer
+          format: int32
+          maximum: 202
+          description: Максимально допустимое значение равно 202.
+          example: 120
+        y:
+          type: number
+          format: float
+          minimum: -992
+          exclusiveMinimum: true
+          description: Должно быть больше -992.
+          example: -12.5
+    Organization:
+      type: object
+      required:
+        - fullName
+        - annualTurnover
+        - type
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 1804
+          description: Полное название организации. Не может быть null или пустой строкой.
+          example: Public Trust Group
+        annualTurnover:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Должно быть больше 0.
+          example: 1250000
+        type:
+          $ref: '#/components/schemas/OrganizationType'
+    Status:
+      type: string
+      enum:
+        - FIRED
+        - RECOMMENDED_FOR_PROMOTION
+        - PROBATION
+      example: PROBATION
+    OrganizationType:
+      type: string
+      enum:
+        - PUBLIC
+        - TRUST
+        - PRIVATE_LIMITED_COMPANY
+        - OPEN_JOINT_STOCK_COMPANY
+      example: PUBLIC
+    CountResult:
+      type: object
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 5
+    ErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-10T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: salary must be greater than 0
+        path:
+          type: string
+          example: /hr
