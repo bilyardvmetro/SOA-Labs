@@ -82,6 +82,41 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Workers
+      summary: Обновить организацию работника
+      description: >
+        Позволяет изменить организацию у существующего работника по id.
+        Проверяется, что `fullName` мб пустым и не длиннее 100 символов.
+      operationId: patchWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerPatchRequest'
+      responses:
+        '200':
+          description: Организация работника успешно обновлена.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: Ошибка валидации значения организации.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     put:
       tags:
         - Workers
@@ -476,6 +511,26 @@ components:
           allOf:
             - $ref: '#/components/schemas/Organization'
           nullable: true
+    WorkerPatchRequest:
+      type: object
+      description: >
+        Частичное обновление работника. Разрешено только поле `organization`.
+        Для обновления организации передаётся только её название в поле `fullName`.
+      additionalProperties: false
+      properties:
+        organization:
+          $ref: '#/components/schemas/OrganizationNamePatch'
+    OrganizationNamePatch:
+      type: object
+      required:
+        - fullName
+      properties:
+        fullName:
+          type: string
+          nullable: true
+          maxLength: 1804
+          description: Новое название организации. Может быть пустой строкой, но если указано, то длина не должна превышать 1804.
+          example: New Department Name
     Coordinates:
       type: object
       required:
