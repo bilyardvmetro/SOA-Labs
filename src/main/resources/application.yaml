@@ -16,6 +16,6 @@ springdoc:
   swagger-ui:
     urls:
       - name: Worker API
-        url: /worker-service.yaml
+        url: /openapi/worker-service.yaml
       - name: HR API
-        url: /hr-service.yaml
+        url: /openapi/hr-service.yaml
