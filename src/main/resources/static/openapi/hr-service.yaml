@@ -29,15 +29,17 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/EntityConflict'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
 
   /hr/index/{workerId}/{coeff}:
     post:
       tags:
         - HR
       summary: Проиндексировать зарплату указанного сотрудника
-      description: Умножает текущую `salary` работника на `coeff`. Если `salary` равно null — возвращается 400.
+      description: Умножает текущую `salary` работника на `coeff`. Если `salary` равно null — возвращается 409.
       operationId: indexWorkerSalary
       parameters:
         - $ref: '#/components/parameters/WorkerId'
@@ -51,8 +53,10 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/EntityConflict'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
 
 
 components:
@@ -89,17 +93,50 @@ components:
         example: 1.15
   responses:
     BadRequest:
-      description: Запрос некорректен или нарушает ограничения полей.
+      description: Некорректные параметры запроса, например path/query-параметры workerId, orgId или coeff.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    NotFound:
-      description: Запрошенный работник не найден.
+            $ref: '#/components/schemas/BadRequestErrorResponse'
+          examples:
+            badRequest:
+              summary: Некорректный параметр запроса
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 400
+                error: Bad Request
+                message: workerId must be greater than or equal to 1
+                path: /hr/fire/0
+    EntityConflict:
+      description: Операция не может быть выполнена из-за текущих параметров или состояния сущности Worker.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/EntityConflictErrorResponse'
+          examples:
+            invalidEntity:
+              summary: Некорректное состояние сущности
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 409
+                error: Conflict
+                message: worker salary must not be null for index operation
+                path: /hr/index/1/1.15
+    WorkerNotFound:
+      description: Запрос синтаксически корректен, но работник с указанным workerId не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WorkerNotFoundErrorResponse'
+          examples:
+            workerNotFound:
+              summary: Работник не найден
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 422
+                error: Unprocessable Entity
+                message: Worker with id 123 does not exist
+                path: /hr/fire/123
   schemas:
     Worker:
       type: object
@@ -223,7 +260,7 @@ components:
           format: int32
           minimum: 0
           example: 5
-    ErrorResponse:
+    BadRequestErrorResponse:
       type: object
       required:
         - timestamp
@@ -235,17 +272,81 @@ components:
         timestamp:
           type: string
           format: date-time
-          example: '2026-09-10T12:00:00Z'
+          example: '2026-09-11T12:00:00Z'
         status:
           type: integer
           format: int32
+          enum:
+            - 400
           example: 400
         error:
           type: string
+          enum:
+            - Bad Request
           example: Bad Request
         message:
           type: string
-          example: salary must be greater than 0
+          example: workerId must be greater than or equal to 1
         path:
           type: string
-          example: /hr
+          example: /hr/fire/0
+    EntityConflictErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 409
+          example: 409
+        error:
+          type: string
+          enum:
+            - Conflict
+          example: Conflict
+        message:
+          type: string
+          example: worker salary must not be null for index operation
+        path:
+          type: string
+          example: /hr/index/1/1.15
+    WorkerNotFoundErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 422
+          example: 422
+        error:
+          type: string
+          enum:
+            - Unprocessable Entity
+          example: Unprocessable Entity
+        message:
+          type: string
+          example: Worker with id 123 does not exist
+        path:
+          type: string
+          example: /hr/fire/123

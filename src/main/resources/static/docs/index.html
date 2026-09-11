@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8" />
-<title>SOA Labs REST API Documentation</title>
-<link rel="stylesheet" href="/webjars/swagger-ui/5.18.2/swagger-ui.css" />
+    <meta charset="utf-8"/>
+    <title>SOA Labs REST API Documentation</title>
+    <link rel="stylesheet" href="/webjars/swagger-ui/5.18.2/swagger-ui.css"/>
 </head>
 <body>
 <div id="swagger-ui"></div>
@@ -11,18 +11,18 @@
 <script src="/webjars/swagger-ui/5.18.2/swagger-ui-bundle.js"></script>
 <script src="/webjars/swagger-ui/5.18.2/swagger-ui-standalone-preset.js"></script>
 <script>
-window.onload = () => {
-SwaggerUIBundle({
-dom_id: '#swagger-ui',
-urls: [
-	{ url: '/openapi/worker-service.yaml', name: 'Worker Service' },
-	{ url: '/openapi/hr-service.yaml', name: 'HR Service' }
-],
-deepLinking: true,
-presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-layout: 'StandaloneLayout'
-});
-};
+    window.onload = () => {
+        SwaggerUIBundle({
+            dom_id: '#swagger-ui',
+            urls: [
+                {url: '/openapi/worker-service.yaml', name: 'Worker Service'},
+                {url: '/openapi/hr-service.yaml', name: 'HR Service'}
+            ],
+            deepLinking: true,
+            presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+            layout: 'StandaloneLayout'
+        });
+    };
 </script>
 </body>
 </html>
