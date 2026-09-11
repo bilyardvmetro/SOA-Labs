@@ -62,7 +62,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/EntityConflict'
   /workers/{id}:
     get:
       tags:
@@ -80,8 +80,8 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
     patch:
       tags:
         - Workers
@@ -117,6 +117,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
     put:
       tags:
         - Workers
@@ -140,10 +142,10 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/EntityConflict'
     delete:
       tags:
         - Workers
@@ -156,8 +158,8 @@ paths:
           description: Работник успешно удален.
         '400':
           $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
   /workers/group-by-end-date:
     get:
       tags:
@@ -358,6 +360,28 @@ components:
           example: salary,desc
       style: form
       explode: true
+      examples:
+        salaryAsc:
+          summary: sort=salary,asc
+          value:
+            - salary,asc
+        salaryDesc:
+          summary: sort=salary,desc
+          value:
+            - salary,desc
+        nameAsc:
+          summary: sort=name,asc
+          value:
+            - name,asc
+        coordinatesXDesc:
+          summary: sort=coordinates.x,desc
+          value:
+            - coordinates.x,desc
+        statusThenSalary:
+          summary: sort=status,asc&sort=salary,desc
+          value:
+            - status,asc
+            - salary,desc
     Filter:
       name: filter
       in: query
@@ -377,6 +401,49 @@ components:
           example: salary:gt:50000
       style: form
       explode: true
+      examples:
+        salaryGreaterThan:
+          summary: filter=salary:gt:50000
+          value:
+            - salary:gt:50000
+        exactName:
+          summary: filter=name:eq:Anna Smith
+          value:
+            - name:eq:Anna Smith
+        nameStartsWith:
+          summary: filter=name:startsWith:Ann
+          value:
+            - name:startsWith:Ann
+        probationStatus:
+          summary: filter=status:eq:PROBATION
+          value:
+            - status:eq:PROBATION
+        publicOrganization:
+          summary: filter=organization.type:eq:PUBLIC
+          value:
+            - organization.type:eq:PUBLIC
+        missingEndDate:
+          summary: filter=endDate:isNull
+          value:
+            - endDate:isNull
+        organizationExists:
+          summary: filter=organization:notNull
+          value:
+            - organization:notNull
+        statusInList:
+          summary: filter=status:in:FIRED,PROBATION
+          value:
+            - status:in:FIRED,PROBATION
+        salaryAndStatus:
+          summary: filter=salary:gt:50000&filter=status:eq:PROBATION
+          value:
+            - salary:gt:50000
+            - status:eq:PROBATION
+        nameAndSalary:
+          summary: filter=name:startsWith:A&filter=salary:gte:70000
+          value:
+            - name:startsWith:A
+            - salary:gte:70000
     OrgId:
       name: orgId
       in: path
@@ -400,23 +467,50 @@ components:
     # HR-related params moved to hr-service.yaml
   responses:
     BadRequest:
-      description: Запрос некорректен или нарушает ограничения полей.
+      description: Некорректные параметры запроса, например path/query-параметры, формат даты, сортировки, фильтрации или пагинации.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    NotFound:
-      description: Запрошенный работник не найден.
+            $ref: '#/components/schemas/BadRequestErrorResponse'
+          examples:
+            badRequest:
+              summary: Некорректный параметр запроса
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 400
+                error: Bad Request
+                message: page must be greater than or equal to 1
+                path: /workers
+    WorkerNotFound:
+      description: Запрос синтаксически корректен, но работник с указанным id не найден в коллекции.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    Conflict:
-      description: Запрос нарушает ограничения целостности коллекции.
+            $ref: '#/components/schemas/WorkerNotFoundErrorResponse'
+          examples:
+            workerNotFound:
+              summary: Работник не найден
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 422
+                error: Unprocessable Entity
+                message: Worker with id 123 does not exist
+                path: /workers/123
+    EntityConflict:
+      description: Некорректные параметры сущности или нарушение ограничений полей Worker, Coordinates либо Organization.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/EntityConflictErrorResponse'
+          examples:
+            invalidEntity:
+              summary: Некорректные параметры сущности
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 409
+                error: Conflict
+                message: salary must be greater than 0
+                path: /workers
   schemas:
     Worker:
       type: object
@@ -632,7 +726,7 @@ components:
           format: int64
           minimum: 0
           example: 4
-    ErrorResponse:
+    BadRequestErrorResponse:
       type: object
       required:
         - timestamp
@@ -644,14 +738,78 @@ components:
         timestamp:
           type: string
           format: date-time
-          example: '2026-09-10T12:00:00Z'
+          example: '2026-09-11T12:00:00Z'
         status:
           type: integer
           format: int32
+          enum:
+            - 400
           example: 400
         error:
           type: string
+          enum:
+            - Bad Request
           example: Bad Request
+        message:
+          type: string
+          example: page must be greater than or equal to 1
+        path:
+          type: string
+          example: /workers
+    WorkerNotFoundErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 422
+          example: 422
+        error:
+          type: string
+          enum:
+            - Unprocessable Entity
+          example: Unprocessable Entity
+        message:
+          type: string
+          example: Worker with id 123 does not exist
+        path:
+          type: string
+          example: /workers/123
+    EntityConflictErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 409
+          example: 409
+        error:
+          type: string
+          enum:
+            - Conflict
+          example: Conflict
         message:
           type: string
           example: salary must be greater than 0
