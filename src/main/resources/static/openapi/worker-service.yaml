@@ -2,10 +2,17 @@ openapi: 3.0.3
 info:
   title: Worker Collection Service API
   description: OpenAPI-спецификация первого веб-сервиса для лабораторной работы 1 по СОА.
-  version: 1.0.0
+  version: 1.1.0
 servers:
-  - url: http://localhost:8080
-    description: Локальный сервер разработки
+  - url: https://{host}:{port}
+    description: Корневой HTTPS-адрес worker-service; доступ по HTTP запрещён.
+    variables:
+      host:
+        default: localhost
+        description: DNS-имя сервера, например helios.
+      port:
+        default: '18443'
+        description: Пользовательский HTTPS-порт Tomcat.
 tags:
   - name: Workers
     description: CRUD-операции над элементами коллекции Worker.
@@ -87,8 +94,12 @@ paths:
         - Workers
       summary: Обновить организацию работника
       description: >
-        Позволяет изменить организацию у существующего работника по id.
-        Проверяется, что `fullName` мб пустым и не длиннее 100 символов.
+        Позволяет переименовать существующую организацию работника или удалить
+        связь работника с организацией. Для переименования передаётся непустой
+        `organization.fullName` длиной не более 1804 символов. Если у работника
+        нет организации, попытка переименования возвращает 409. Значение
+        `organization: null` удаляет организацию. Пустое тело, пустой объект,
+        `fullName: null`, пустой `fullName` и лишние поля недопустимы.
       operationId: patchWorker
       parameters:
         - $ref: '#/components/parameters/WorkerId'
@@ -98,6 +109,16 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/WorkerPatchRequest'
+            examples:
+              renameOrganization:
+                summary: Переименовать существующую организацию
+                value:
+                  organization:
+                    fullName: New Department Name
+              removeOrganization:
+                summary: Удалить организацию у работника
+                value:
+                  organization: null
       responses:
         '200':
           description: Организация работника успешно обновлена.
@@ -108,11 +129,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
-          description: Ошибка валидации значения организации.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/responses/EntityConflict'
+          $ref: '#/components/responses/EntityConflict'
         '422':
           $ref: '#/components/responses/WorkerNotFound'
     put:
@@ -205,7 +222,7 @@ paths:
       tags:
         - Worker collection operations
       summary: Найти работников со статусом больше заданного
-      description: Возвращает работников, статус которых больше заданного значения согласно порядку объявления enum FIRED < RECOMMENDED_FOR_PROMOTION < PROBATION.
+      description: Возвращает работников, статус которых имеет строго больший ранг согласно порядку FIRED (0) < RECOMMENDED_FOR_PROMOTION (1) < PROBATION (2).
       operationId: findWorkersByStatusGreaterThan
       parameters:
         - name: status
@@ -273,7 +290,9 @@ paths:
       tags:
         - Worker collection operations
       summary: Количество работников с salary меньше заданного
-      description: Возвращает количество объектов, значение поля `salary` которых меньше заданного порога.
+      description: >
+        Возвращает количество объектов, ненулевое значение поля `salary`
+        которых меньше заданного порога. Работники с `salary: null` не учитываются.
       operationId: countSalaryLessThan
       parameters:
         - name: threshold
@@ -282,7 +301,7 @@ paths:
           description: Пороговое значение зарплаты (целое, > 0).
           schema:
             type: integer
-            minimum: 0
+            minimum: 1
             example: 50000
       responses:
         '200':
@@ -302,16 +321,6 @@ components:
       in: path
       required: true
       description: Уникальный сгенерированный id работника.
-      schema:
-        type: integer
-        format: int32
-        minimum: 1
-        example: 1
-    WorkerIdPath:
-      name: workerId
-      in: path
-      required: true
-      description: Идентификатор работника в путевом параметре (целое > 0).
       schema:
         type: integer
         format: int32
@@ -390,6 +399,8 @@ components:
         organization.annualTurnover, organization.type. Поддерживаемые
         операторы: eq, ne, gt, gte, lt, lte, contains, startsWith, endsWith,
         in, isNull, notNull. Для isNull и notNull часть value можно не указывать.
+        Поля со значением null не удовлетворяют операторам сравнения; для них
+        следует использовать isNull или notNull.
       schema:
         type: array
         items:
@@ -440,27 +451,6 @@ components:
           value:
             - name:startsWith:A
             - salary:gte:70000
-    OrgId:
-      name: orgId
-      in: path
-      required: true
-      description: Идентификатор организации (в этой спецификации используется `organization.fullName`).
-      schema:
-        type: string
-        minLength: 1
-        example: Public Trust Group
-    Coeff:
-      name: coeff
-      in: path
-      required: true
-      description: Коэффициент индексирования зарплаты (множитель > 0).
-      schema:
-        type: number
-        format: double
-        minimum: 0.0
-        exclusiveMinimum: true
-        example: 1.15
-    # HR-related params moved to hr-service.yaml
   responses:
     BadRequest:
       description: Некорректные параметры запроса, например path/query-параметры, формат даты, сортировки, фильтрации или пагинации.
@@ -604,22 +594,28 @@ components:
     WorkerPatchRequest:
       type: object
       description: >
-        Частичное обновление работника. Разрешено только поле `organization`.
-        Для обновления организации передаётся только её название в поле `fullName`.
+        Частичное обновление организации работника. Разрешено только поле
+        `organization`, и оно обязательно должно присутствовать. Объект с
+        `fullName` переименовывает существующую организацию; null удаляет её.
+      required:
+        - organization
       additionalProperties: false
       properties:
         organization:
-          $ref: '#/components/schemas/OrganizationNamePatch'
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/OrganizationNamePatch'
     OrganizationNamePatch:
       type: object
       required:
         - fullName
+      additionalProperties: false
       properties:
         fullName:
           type: string
-          nullable: true
+          minLength: 1
           maxLength: 1804
-          description: Новое название организации. Может быть пустой строкой, но если указано, то длина не должна превышать 1804.
+          description: Новое непустое название существующей организации длиной не более 1804 символов.
           example: New Department Name
     Coordinates:
       type: object
@@ -663,6 +659,7 @@ components:
           $ref: '#/components/schemas/OrganizationType'
     Status:
       type: string
+      description: Статусы упорядочены по рангам FIRED (0) < RECOMMENDED_FOR_PROMOTION (1) < PROBATION (2).
       enum:
         - FIRED
         - RECOMMENDED_FOR_PROMOTION

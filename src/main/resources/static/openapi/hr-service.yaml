@@ -2,10 +2,17 @@ openapi: 3.0.3
 info:
   title: HR Service API
   description: OpenAPI-спецификация второго веб-сервиса (/hr) — операции увольнения и индексирования зарплат.
-  version: 1.0.0
+  version: 1.1.0
 servers:
-  - url: http://localhost:8080
-    description: Локальный сервер разработки
+  - url: https://{host}:{port}
+    description: Корневой HTTPS-адрес hr-service; доступ по HTTP запрещён.
+    variables:
+      host:
+        default: localhost
+        description: DNS-имя сервера, например helios.
+      port:
+        default: '19443'
+        description: Пользовательский HTTPS-порт WildFly.
 tags:
   - name: HR
     description: Операции индексирования/увольнения сотрудников.
@@ -15,14 +22,19 @@ paths:
       tags:
         - HR
       summary: Уволить сотрудника
-      description: Устанавливает `status` работника в `FIRED` по указанному `workerId`.
+      description: >
+        Проверяет, что работник с указанным `workerId` относится к организации
+        с переданным `organizationName`, после чего устанавливает его `status`
+        в `FIRED` посредством HTTPS API worker-service. Поля `endDate` и
+        `organization` не изменяются. Повторный вызов для уже уволенного
+        работника идемпотентен и возвращает 200, если организация совпадает.
       operationId: fireWorker
       parameters:
         - $ref: '#/components/parameters/WorkerId'
-        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/OrganizationName'
       responses:
         '200':
-          description: Работник успешно уволен; возвращается обновлённый объект работника.
+          description: Работник успешно уволен либо уже был уволен; возвращается актуальный объект работника.
           content:
             application/json:
               schema:
@@ -33,13 +45,22 @@ paths:
           $ref: '#/components/responses/EntityConflict'
         '422':
           $ref: '#/components/responses/WorkerNotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /hr/index/{workerId}/{coeff}:
     post:
       tags:
         - HR
       summary: Проиндексировать зарплату указанного сотрудника
-      description: Умножает текущую `salary` работника на `coeff`. Если `salary` равно null — возвращается 409.
+      description: >
+        Получает работника через HTTPS API worker-service, умножает текущую
+        целочисленную `salary` на положительный десятичный `coeff` с помощью
+        точной десятичной арифметики BigDecimal и округляет результат до целого
+        по правилу HALF_UP. Если `salary` равна null либо округлённый результат
+        выходит за диапазон положительного int32, возвращается 409.
       operationId: indexWorkerSalary
       parameters:
         - $ref: '#/components/parameters/WorkerId'
@@ -57,6 +78,10 @@ paths:
           $ref: '#/components/responses/EntityConflict'
         '422':
           $ref: '#/components/responses/WorkerNotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
 
 components:
@@ -71,29 +96,29 @@ components:
         format: int32
         minimum: 1
         example: 1
-    OrgId:
-      name: orgId
+    OrganizationName:
+      name: organizationName
       in: query
       required: true
-      description: Полное имя организации, из которой должен быть уволен работник (используется `organization.fullName`).
+      description: Полное имя организации, из которой должен быть уволен работник; сравнивается с `organization.fullName`.
       schema:
         type: string
         minLength: 1
+        maxLength: 1804
         example: Public Trust Group
     Coeff:
       name: coeff
       in: path
       required: true
-      description: Коэффициент индексирования зарплаты (множитель > 0).
+      description: Положительный десятичный коэффициент индексирования, разбираемый без потери точности как BigDecimal.
       schema:
         type: number
-        format: double
         minimum: 0.0
         exclusiveMinimum: true
         example: 1.15
   responses:
     BadRequest:
-      description: Некорректные параметры запроса, например path/query-параметры workerId, orgId или coeff.
+      description: Некорректные параметры запроса, например path/query-параметры workerId, organizationName или coeff.
       content:
         application/json:
           schema:
@@ -108,20 +133,28 @@ components:
                 message: workerId must be greater than or equal to 1
                 path: /hr/fire/0
     EntityConflict:
-      description: Операция не может быть выполнена из-за текущих параметров или состояния сущности Worker.
+      description: Операция не может быть выполнена из-за состояния Worker, несовпадения организации или выхода проиндексированной зарплаты за допустимый диапазон.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/EntityConflictErrorResponse'
           examples:
-            invalidEntity:
-              summary: Некорректное состояние сущности
+            nullSalary:
+              summary: У работника отсутствует зарплата
               value:
                 timestamp: '2026-09-11T12:00:00Z'
                 status: 409
                 error: Conflict
                 message: worker salary must not be null for index operation
                 path: /hr/index/1/1.15
+            organizationMismatch:
+              summary: Работник относится к другой организации
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 409
+                error: Conflict
+                message: worker does not belong to organization Public Trust Group
+                path: /hr/fire/1
     WorkerNotFound:
       description: Запрос синтаксически корректен, но работник с указанным workerId не найден.
       content:
@@ -137,6 +170,30 @@ components:
                 error: Unprocessable Entity
                 message: Worker with id 123 does not exist
                 path: /hr/fire/123
+    BadGateway:
+      description: worker-service вернул некорректный или неожиданный ответ.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpstreamErrorResponse'
+          example:
+            timestamp: '2026-09-11T12:00:00Z'
+            status: 502
+            error: Bad Gateway
+            message: worker-service returned an invalid response
+            path: /hr/fire/1
+    ServiceUnavailable:
+      description: worker-service недоступен либо не ответил за установленное время.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpstreamErrorResponse'
+          example:
+            timestamp: '2026-09-11T12:00:00Z'
+            status: 503
+            error: Service Unavailable
+            message: worker-service is unavailable
+            path: /hr/fire/1
   schemas:
     Worker:
       type: object
@@ -237,6 +294,7 @@ components:
           $ref: '#/components/schemas/OrganizationType'
     Status:
       type: string
+      description: Статусы упорядочены по рангам FIRED (0) < RECOMMENDED_FOR_PROMOTION (1) < PROBATION (2).
       enum:
         - FIRED
         - RECOMMENDED_FOR_PROMOTION
@@ -350,3 +408,35 @@ components:
         path:
           type: string
           example: /hr/fire/123
+    UpstreamErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 502
+            - 503
+          example: 503
+        error:
+          type: string
+          enum:
+            - Bad Gateway
+            - Service Unavailable
+          example: Service Unavailable
+        message:
+          type: string
+          example: worker-service is unavailable
+        path:
+          type: string
+          example: /hr/fire/1
