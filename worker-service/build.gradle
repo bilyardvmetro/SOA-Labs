@@ -1,0 +1,31 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+    id 'war'
+}
+
+description = 'Worker collection service deployed to Apache Tomcat'
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('processResources') {
+    from(rootProject.file('openapi/worker-service.yaml')) {
+        into 'static/openapi'
+    }
+}
+
+tasks.named('bootWar') {
+    archiveFileName = 'worker-service.war'
+}
+
+tasks.named('war') {
+    enabled = false
+}

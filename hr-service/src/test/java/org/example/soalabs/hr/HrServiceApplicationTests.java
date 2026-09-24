@@ -1,13 +1,12 @@
-package org.example.soalabs;
+package org.example.soalabs.hr;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class SoaLabsApplicationTests {
+class HrServiceApplicationTests {
 
     @Test
     void contextLoads() {
     }
-
 }
