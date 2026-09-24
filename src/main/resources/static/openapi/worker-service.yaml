@@ -107,16 +107,12 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
           description: Ошибка валидации значения организации.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/responses/EntityConflict'
         '422':
           $ref: '#/components/responses/WorkerNotFound'
     put:
