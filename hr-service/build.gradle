@@ -11,6 +11,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.webjars:swagger-ui:5.18.2'
 
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
     providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
 }
 
