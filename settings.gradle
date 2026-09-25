@@ -1,1 +1,4 @@
 rootProject.name = 'SOA-Labs'
+
+include 'worker-service'
+include 'hr-service'

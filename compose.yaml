@@ -1,0 +1,26 @@
+name: soa-labs
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    container_name: soa-labs-postgres
+    environment:
+      POSTGRES_DB: studs
+      POSTGRES_USER: s413041
+      POSTGRES_PASSWORD: your_pgpass
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+volumes:
+  postgres-data:
+    name: soa-labs-postgres-data
