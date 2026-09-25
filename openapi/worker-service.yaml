@@ -45,7 +45,10 @@ paths:
       tags:
         - Workers
       summary: Создать работника
-      description: Добавляет нового работника в коллекцию. Поля id и creationDate генерируются автоматически.
+      description: >
+        Добавляет нового работника в коллекцию. Поля id и creationDate
+        генерируются автоматически. Значения startDate и endDate не могут
+        находиться в прошлом.
       operationId: createWorker
       requestBody:
         required: true
@@ -100,6 +103,7 @@ paths:
         нет организации, попытка переименования возвращает 409. Значение
         `organization: null` удаляет организацию. Пустое тело, пустой объект,
         `fullName: null`, пустой `fullName` и лишние поля недопустимы.
+        Организация уволенного работника не может быть изменена.
       operationId: patchWorker
       parameters:
         - $ref: '#/components/parameters/WorkerId'
@@ -136,7 +140,10 @@ paths:
       tags:
         - Workers
       summary: Обновить работника
-      description: Заменяет все редактируемые поля существующего работника. Поля id и creationDate не изменяются.
+      description: >
+        Заменяет все редактируемые поля существующего работника. Поля id и
+        creationDate не изменяются. Уволенный работник не может быть изменён.
+        Новые значения startDate и endDate не могут находиться в прошлом.
       operationId: updateWorker
       parameters:
         - $ref: '#/components/parameters/WorkerId'
@@ -169,6 +176,30 @@ paths:
       responses:
         '204':
           description: Работник успешно удален.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
+  /workers/{id}/fire:
+    post:
+      tags:
+        - Workers
+      summary: Установить работнику статус FIRED
+      description: >
+        Служебная операция, используемая hr-service после проверки организации
+        работника. Обычные операции создания и полного обновления не позволяют
+        назначить статус FIRED. Повторный вызов идемпотентен.
+      operationId: fireWorkerInternal
+      x-internal: true
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Работник переведён в статус FIRED либо уже был уволен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
         '422':
@@ -578,11 +609,13 @@ components:
         startDate:
           type: string
           format: date-time
+          description: При назначении не может находиться в прошлом.
           example: '2025-03-01T09:00:00Z'
         endDate:
           type: string
           format: date-time
           nullable: true
+          description: При назначении не может находиться в прошлом.
           example: '2026-03-01T18:00:00Z'
         status:
           $ref: '#/components/schemas/Status'

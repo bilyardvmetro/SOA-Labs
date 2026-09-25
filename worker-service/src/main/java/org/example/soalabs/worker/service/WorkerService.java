@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @Transactional(readOnly = true)
@@ -46,12 +47,19 @@ public class WorkerService {
 
     @Transactional
     public WorkerResponse createWorker(WorkerInput input) {
+        requireEditableStatus(input.status());
+        validateNewDate("startDate", input.startDate());
+        validateNewDate("endDate", input.endDate());
         return mapper.toResponse(repository.save(mapper.toEntity(input)));
     }
 
     @Transactional
     public WorkerResponse updateWorker(int id, WorkerInput input) {
         Worker worker = requireWorker(id);
+        requireActive(worker);
+        requireEditableStatus(input.status());
+        validateChangedDate("startDate", worker.getStartDate(), input.startDate());
+        validateChangedDate("endDate", worker.getEndDate(), input.endDate());
         mapper.replace(worker, input);
         return mapper.toResponse(worker);
     }
@@ -59,6 +67,7 @@ public class WorkerService {
     @Transactional
     public WorkerResponse patchWorker(int id, WorkerPatchRequest patch) {
         Worker worker = requireWorker(id);
+        requireActive(worker);
         if (patch.getOrganization() == null) {
             worker.removeOrganization();
         } else {
@@ -74,6 +83,13 @@ public class WorkerService {
     public void deleteWorker(int id) {
         Worker worker = requireWorker(id);
         repository.delete(worker);
+    }
+
+    @Transactional
+    public WorkerResponse fireWorker(int id) {
+        Worker worker = requireWorker(id);
+        worker.fire();
+        return mapper.toResponse(worker);
     }
 
     public List<EndDateGroupResponse> countGroupedByEndDate() {
@@ -134,5 +150,29 @@ public class WorkerService {
 
     private Worker requireWorker(int id) {
         return repository.findById(id).orElseThrow(() -> new WorkerNotFoundException(id));
+    }
+
+    private void requireActive(Worker worker) {
+        if (worker.getStatus() == WorkerStatus.FIRED) {
+            throw new EntityConflictException("Fired worker cannot be modified");
+        }
+    }
+
+    private void requireEditableStatus(WorkerStatus status) {
+        if (status == WorkerStatus.FIRED) {
+            throw new EntityConflictException("FIRED status can only be assigned through hr-service");
+        }
+    }
+
+    private void validateNewDate(String field, Instant value) {
+        if (value != null && value.isBefore(Instant.now())) {
+            throw new EntityConflictException(field + " must not be in the past");
+        }
+    }
+
+    private void validateChangedDate(String field, Instant currentValue, Instant requestedValue) {
+        if (!Objects.equals(currentValue, requestedValue)) {
+            validateNewDate(field, requestedValue);
+        }
     }
 }

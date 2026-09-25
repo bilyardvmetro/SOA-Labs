@@ -82,6 +82,11 @@ public class WorkerController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/fire")
+    public WorkerResponse fireWorker(@PathVariable @Min(1) int id) {
+        return service.fireWorker(id);
+    }
+
     @GetMapping("/group-by-end-date")
     public List<EndDateGroupResponse> countWorkersGroupedByEndDate() {
         return service.countGroupedByEndDate();

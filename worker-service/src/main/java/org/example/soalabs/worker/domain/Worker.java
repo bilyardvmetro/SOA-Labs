@@ -82,4 +82,8 @@ public class Worker {
     public void removeOrganization() {
         organization = null;
     }
+
+    public void fire() {
+        status = WorkerStatus.FIRED;
+    }
 }

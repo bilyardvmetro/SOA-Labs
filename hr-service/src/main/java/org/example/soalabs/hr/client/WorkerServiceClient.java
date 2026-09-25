@@ -65,6 +65,22 @@ public class WorkerServiceClient {
         }
     }
 
+    public WorkerDto fireWorker(int workerId) {
+        try {
+            WorkerDto worker = workerServiceRestClient.post()
+                    .uri("/workers/{id}/fire", workerId)
+                    .retrieve()
+                    .body(WorkerDto.class);
+            return validateResponse(worker, workerId);
+        } catch (RestClientResponseException exception) {
+            throw translateResponseException(exception, workerId);
+        } catch (ResourceAccessException exception) {
+            throw new UpstreamUnavailableException(UNAVAILABLE);
+        } catch (RestClientException exception) {
+            throw new UpstreamBadGatewayException(INVALID_RESPONSE);
+        }
+    }
+
     private WorkerDto validateResponse(WorkerDto worker, int expectedId) {
         if (worker == null || !Integer.valueOf(expectedId).equals(worker.id())) {
             throw new UpstreamBadGatewayException(INVALID_RESPONSE);

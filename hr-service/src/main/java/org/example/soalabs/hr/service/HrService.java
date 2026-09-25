@@ -32,16 +32,14 @@ public class HrService {
             return worker;
         }
 
-        WorkerUpdateRequest request = WorkerUpdateRequest.from(
-                worker,
-                worker.salary(),
-                WorkerStatus.FIRED
-        );
-        return workerServiceClient.updateWorker(workerId, request);
+        return workerServiceClient.fireWorker(workerId);
     }
 
     public WorkerDto indexSalary(int workerId, BigDecimal coefficient) {
         WorkerDto worker = workerServiceClient.getWorker(workerId);
+        if (worker.status() == WorkerStatus.FIRED) {
+            throw new EntityConflictException("fired worker salary cannot be indexed");
+        }
         if (worker.salary() == null) {
             throw new EntityConflictException("worker salary must not be null for index operation");
         }

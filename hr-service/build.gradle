@@ -6,6 +6,8 @@ plugins {
 
 description = 'HR orchestration service deployed to WildFly'
 
+def frontendDirectory = rootProject.file('frontend')
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
@@ -17,9 +19,41 @@ dependencies {
     providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
 }
 
+tasks.register('frontendInstall', Exec) {
+    workingDir frontendDirectory
+    commandLine 'npm', 'ci'
+
+    inputs.files(
+            frontendDirectory.toPath().resolve('package.json').toFile(),
+            frontendDirectory.toPath().resolve('package-lock.json').toFile()
+    )
+    outputs.dir frontendDirectory.toPath().resolve('node_modules').toFile()
+}
+
+tasks.register('frontendBuild', Exec) {
+    dependsOn 'frontendInstall'
+    workingDir frontendDirectory
+    commandLine 'npm', 'run', 'build'
+
+    inputs.dir frontendDirectory.toPath().resolve('src').toFile()
+    inputs.files(
+            frontendDirectory.toPath().resolve('index.html').toFile(),
+            frontendDirectory.toPath().resolve('tsconfig.json').toFile(),
+            frontendDirectory.toPath().resolve('tsconfig.app.json').toFile(),
+            frontendDirectory.toPath().resolve('tsconfig.node.json').toFile(),
+            frontendDirectory.toPath().resolve('vite.config.ts').toFile()
+    )
+    outputs.dir frontendDirectory.toPath().resolve('dist').toFile()
+}
+
 tasks.named('processResources') {
+    dependsOn 'frontendBuild'
+
     from(rootProject.file('openapi')) {
         into 'static/openapi'
+    }
+    from(frontendDirectory.toPath().resolve('dist').toFile()) {
+        into 'static'
     }
 }
 
