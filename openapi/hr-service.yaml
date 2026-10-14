@@ -1,0 +1,443 @@
+openapi: 3.0.3
+info:
+  title: HR Service API
+  description: OpenAPI-спецификация второго веб-сервиса (/hr) — операции увольнения и индексирования зарплат.
+  version: 1.1.0
+servers:
+  - url: https://{host}:{port}
+    description: Корневой HTTPS-адрес hr-service; доступ по HTTP запрещён.
+    variables:
+      host:
+        default: localhost
+        description: DNS-имя сервера, например helios.
+      port:
+        default: '19443'
+        description: Пользовательский HTTPS-порт WildFly.
+tags:
+  - name: HR
+    description: Операции индексирования/увольнения сотрудников.
+paths:
+  /hr/fire/{workerId}:
+    post:
+      tags:
+        - HR
+      summary: Уволить сотрудника
+      description: >
+        Проверяет, что работник с указанным `workerId` относится к организации
+        с переданным `organizationName`, после чего устанавливает его `status`
+        в `FIRED` посредством HTTPS API worker-service. Поля `endDate` и
+        `organization` не изменяются. Повторный вызов для уже уволенного
+        работника идемпотентен и возвращает 200, если организация совпадает.
+      operationId: fireWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+        - $ref: '#/components/parameters/OrganizationName'
+      responses:
+        '200':
+          description: Работник успешно уволен либо уже был уволен; возвращается актуальный объект работника.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/EntityConflict'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /hr/index/{workerId}/{coeff}:
+    post:
+      tags:
+        - HR
+      summary: Проиндексировать зарплату указанного сотрудника
+      description: >
+        Получает работника через HTTPS API worker-service, умножает текущую
+        целочисленную `salary` на положительный десятичный `coeff` с помощью
+        точной десятичной арифметики BigDecimal и округляет результат до целого
+        по правилу HALF_UP. Если работник уволен, `salary` равна null либо
+        округлённый результат выходит за диапазон положительного int32,
+        возвращается 409.
+      operationId: indexWorkerSalary
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+        - $ref: '#/components/parameters/Coeff'
+      responses:
+        '200':
+          description: Зарплата успешно проиндексирована; возвращается обновлённый объект работника.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/EntityConflict'
+        '422':
+          $ref: '#/components/responses/WorkerNotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+
+components:
+  parameters:
+    WorkerId:
+      name: workerId
+      in: path
+      required: true
+      description: Идентификатор работника (целое > 0).
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        example: 1
+    OrganizationName:
+      name: organizationName
+      in: query
+      required: true
+      description: Полное имя организации, из которой должен быть уволен работник; сравнивается с `organization.fullName`.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 1804
+        example: Public Trust Group
+    Coeff:
+      name: coeff
+      in: path
+      required: true
+      description: Положительный десятичный коэффициент индексирования, разбираемый без потери точности как BigDecimal.
+      schema:
+        type: number
+        minimum: 0.0
+        exclusiveMinimum: true
+        example: 1.15
+  responses:
+    BadRequest:
+      description: Некорректные параметры запроса, например path/query-параметры workerId, organizationName или coeff.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BadRequestErrorResponse'
+          examples:
+            badRequest:
+              summary: Некорректный параметр запроса
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 400
+                error: Bad Request
+                message: workerId must be greater than or equal to 1
+                path: /hr/fire/0
+    EntityConflict:
+      description: Операция не может быть выполнена из-за состояния Worker, несовпадения организации или выхода проиндексированной зарплаты за допустимый диапазон.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EntityConflictErrorResponse'
+          examples:
+            nullSalary:
+              summary: У работника отсутствует зарплата
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 409
+                error: Conflict
+                message: worker salary must not be null for index operation
+                path: /hr/index/1/1.15
+            organizationMismatch:
+              summary: Работник относится к другой организации
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 409
+                error: Conflict
+                message: worker does not belong to organization Public Trust Group
+                path: /hr/fire/1
+    WorkerNotFound:
+      description: Запрос синтаксически корректен, но работник с указанным workerId не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WorkerNotFoundErrorResponse'
+          examples:
+            workerNotFound:
+              summary: Работник не найден
+              value:
+                timestamp: '2026-09-11T12:00:00Z'
+                status: 422
+                error: Unprocessable Entity
+                message: Worker with id 123 does not exist
+                path: /hr/fire/123
+    BadGateway:
+      description: worker-service вернул некорректный или неожиданный ответ.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpstreamErrorResponse'
+          example:
+            timestamp: '2026-09-11T12:00:00Z'
+            status: 502
+            error: Bad Gateway
+            message: worker-service returned an invalid response
+            path: /hr/fire/1
+    ServiceUnavailable:
+      description: worker-service недоступен либо не ответил за установленное время.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpstreamErrorResponse'
+          example:
+            timestamp: '2026-09-11T12:00:00Z'
+            status: 503
+            error: Service Unavailable
+            message: worker-service is unavailable
+            path: /hr/fire/1
+  schemas:
+    Worker:
+      type: object
+      required:
+        - id
+        - name
+        - coordinates
+        - creationDate
+        - startDate
+        - status
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          readOnly: true
+          description: Уникальный сгенерированный id.
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          description: Имя работника. Не может быть null или пустой строкой.
+          example: Anna Smith
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Сгенерированные дата и время создания.
+          example: '2026-09-10T12:00:00Z'
+        salary:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+          description: Зарплата работника. Если указана, должна быть больше 0; может быть null.
+          example: 75000
+        startDate:
+          type: string
+          format: date-time
+          description: Дата начала работы. Не может быть null.
+          example: '2026-03-01T09:00:00Z'
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата окончания работы. Может быть null.
+          example: '2026-09-10T18:00:00Z'
+        status:
+          $ref: '#/components/schemas/Status'
+          description: Статус работника. Не может быть null.
+          example: PROBATION
+        organization:
+          allOf:
+            - $ref: '#/components/schemas/Organization'
+          nullable: true
+          description: Организация работника. Может быть null.
+    Coordinates:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: integer
+          format: int32
+          maximum: 202
+          description: Максимально допустимое значение равно 202.
+          example: 120
+        y:
+          type: number
+          format: float
+          minimum: -992
+          exclusiveMinimum: true
+          description: Должно быть больше -992.
+          example: -12.5
+    Organization:
+      type: object
+      required:
+        - fullName
+        - annualTurnover
+        - type
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 1804
+          description: Полное название организации. Не может быть null или пустой строкой.
+          example: Public Trust Group
+        annualTurnover:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Должно быть больше 0.
+          example: 1250000
+        type:
+          $ref: '#/components/schemas/OrganizationType'
+    Status:
+      type: string
+      description: Статусы упорядочены по рангам FIRED (0) < RECOMMENDED_FOR_PROMOTION (1) < PROBATION (2).
+      enum:
+        - FIRED
+        - RECOMMENDED_FOR_PROMOTION
+        - PROBATION
+      example: PROBATION
+    OrganizationType:
+      type: string
+      enum:
+        - PUBLIC
+        - TRUST
+        - PRIVATE_LIMITED_COMPANY
+        - OPEN_JOINT_STOCK_COMPANY
+      example: PUBLIC
+    CountResult:
+      type: object
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 5
+    BadRequestErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 400
+          example: 400
+        error:
+          type: string
+          enum:
+            - Bad Request
+          example: Bad Request
+        message:
+          type: string
+          example: workerId must be greater than or equal to 1
+        path:
+          type: string
+          example: /hr/fire/0
+    EntityConflictErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 409
+          example: 409
+        error:
+          type: string
+          enum:
+            - Conflict
+          example: Conflict
+        message:
+          type: string
+          example: worker salary must not be null for index operation
+        path:
+          type: string
+          example: /hr/index/1/1.15
+    WorkerNotFoundErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 422
+          example: 422
+        error:
+          type: string
+          enum:
+            - Unprocessable Entity
+          example: Unprocessable Entity
+        message:
+          type: string
+          example: Worker with id 123 does not exist
+        path:
+          type: string
+          example: /hr/fire/123
+    UpstreamErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-11T12:00:00Z'
+        status:
+          type: integer
+          format: int32
+          enum:
+            - 502
+            - 503
+          example: 503
+        error:
+          type: string
+          enum:
+            - Bad Gateway
+            - Service Unavailable
+          example: Service Unavailable
+        message:
+          type: string
+          example: worker-service is unavailable
+        path:
+          type: string
+          example: /hr/fire/1
