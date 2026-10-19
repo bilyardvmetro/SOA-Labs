@@ -14,7 +14,7 @@ import org.example.soalabs.worker.api.dto.WorkerPageResponse;
 import org.example.soalabs.worker.api.dto.WorkerPatchRequest;
 import org.example.soalabs.worker.api.dto.WorkerResponse;
 import org.example.soalabs.worker.domain.WorkerStatus;
-import org.example.soalabs.worker.service.WorkerService;
+import org.example.soalabs.worker.service.WorkerRemote;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,7 +39,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class WorkerController {
 
-    private final WorkerService service;
+    private final WorkerRemote service;
 
     @GetMapping
     public WorkerPageResponse getWorkers(

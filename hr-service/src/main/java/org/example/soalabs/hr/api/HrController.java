@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.example.soalabs.hr.api.dto.WorkerDto;
-import org.example.soalabs.hr.service.HrService;
+import org.example.soalabs.hr.service.HrRemote;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,7 +22,7 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class HrController {
 
-    private final HrService service;
+    private final HrRemote service;
 
     @PostMapping("/fire/{workerId}")
     public WorkerDto fireWorker(

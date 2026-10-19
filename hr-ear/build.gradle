@@ -1,0 +1,14 @@
+plugins { id 'ear' }
+dependencies {
+    deploy project(':hr-ejb')
+    deploy project(path: ':hr-service', configuration: 'webArchive')
+    earlib project(path: ':hr-ejb', configuration: 'earLibraries')
+}
+tasks.named('ear') {
+    archiveFileName = 'hr.ear'
+    deploymentDescriptor {
+        applicationName = 'hr'
+        module('hr-ejb.jar', 'ejb')
+        webModule('hr-service.war', '/')
+    }
+}

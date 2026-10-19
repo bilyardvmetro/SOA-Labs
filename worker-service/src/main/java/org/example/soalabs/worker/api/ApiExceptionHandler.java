@@ -6,7 +6,6 @@ import org.example.soalabs.worker.api.dto.ErrorResponse;
 import org.example.soalabs.worker.service.EntityConflictException;
 import org.example.soalabs.worker.service.InvalidRequestException;
 import org.example.soalabs.worker.service.WorkerNotFoundException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -28,11 +27,9 @@ public class ApiExceptionHandler {
         return response(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request);
     }
 
-    @ExceptionHandler({EntityConflictException.class, DataIntegrityViolationException.class})
+    @ExceptionHandler(EntityConflictException.class)
     public ResponseEntity<ErrorResponse> handleConflict(Exception exception, HttpServletRequest request) {
-        String message = exception instanceof DataIntegrityViolationException
-                ? "Worker violates database constraints"
-                : exception.getMessage();
+        String message = exception.getMessage();
         return response(HttpStatus.CONFLICT, message, request);
     }
 

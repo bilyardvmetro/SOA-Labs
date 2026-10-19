@@ -1,0 +1,17 @@
+dependencies {
+    implementation project(':worker-contract')
+    compileOnly 'jakarta.platform:jakarta.jakartaee-api:10.0.0'
+    // Only repository/query utilities; no Spring container or Spring transaction manager.
+    implementation 'org.springframework.data:spring-data-jpa'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}
+tasks.named('jar') { archiveFileName = 'worker-ejb.jar' }
+
+configurations {
+    earLibraries {
+        canBeConsumed = true
+        canBeResolved = false
+        extendsFrom implementation, runtimeOnly
+    }
+}

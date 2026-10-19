@@ -1,0 +1,12 @@
+plugins { id 'ear' }
+dependencies {
+    deploy project(':worker-ejb')
+    earlib project(path: ':worker-ejb', configuration: 'earLibraries')
+}
+tasks.named('ear') {
+    archiveFileName = 'worker.ear'
+    deploymentDescriptor {
+        applicationName = 'worker'
+        module('worker-ejb.jar', 'ejb')
+    }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jboss:ejb-jar xmlns:jboss="http://www.jboss.com/xml/ns/javaee"
+               xmlns="http://java.sun.com/xml/ns/javaee" xmlns:p="urn:ejb-pool:1.0" version="3.1">
+  <assembly-descriptor>
+    <p:pool><ejb-name>WorkerService</ejb-name><p:bean-instance-pool-ref>worker-pool</p:bean-instance-pool-ref></p:pool>
+  </assembly-descriptor>
+</jboss:ejb-jar>

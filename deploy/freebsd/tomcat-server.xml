@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Server port="-1">
+  <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener"/>
+  <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener"/>
+  <Service name="Catalina">
+    <Connector port="18443" address="127.0.0.1"
+        protocol="org.apache.coyote.http11.Http11NioProtocol"
+        maxThreads="8" minSpareThreads="1" maxConnections="32" acceptCount="8"
+        connectionTimeout="10000" keepAliveTimeout="10000"
+        SSLEnabled="true" scheme="https" secure="true">
+      <SSLHostConfig>
+        <Certificate certificateKeystoreFile="${catalina.base}/conf/worker.p12"
+            certificateKeystorePassword="${soa.tls.password}"
+            certificateKeystoreType="PKCS12" certificateKeyAlias="worker" type="RSA"/>
+      </SSLHostConfig>
+    </Connector>
+    <Engine name="Catalina" defaultHost="localhost">
+      <Host name="localhost" appBase="webapps" unpackWARs="true" autoDeploy="false"/>
+    </Engine>
+  </Service>
+</Server>

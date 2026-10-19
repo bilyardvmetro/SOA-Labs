@@ -2,3 +2,5 @@ rootProject.name = 'SOA-Labs'
 
 include 'worker-service'
 include 'hr-service'
+include 'worker-contract', 'worker-ejb', 'worker-ear'
+include 'hr-contract', 'hr-ejb', 'hr-ear'

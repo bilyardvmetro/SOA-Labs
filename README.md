@@ -1,603 +1,415 @@
-# SOA Labs
+# SOA — лабораторная работа №3
 
-Монорепозиторий содержит три части приложения:
+![Вариант №1](variants/soa%20lab-3%20var.png)
 
-- `worker-service` — Spring MVC REST, разворачивается как `ROOT.war` в Apache Tomcat 10.1;
-- `hr-service` — Spring MVC REST, разворачивается как `ROOT.war` в WildFly 33;
-- `frontend` — Vue 3 + TypeScript + Vite, production-сборка автоматически включается в `hr-service.war`.
+## 1. Запуск проекта
 
-Ниже описан чистый запуск на Helios с Java 17 и PostgreSQL 18.
-
-## Используемые порты
-
-| Компонент | Протокол | Порт |
-|---|---:|---:|
-| worker-service / Tomcat | HTTPS | `18443` |
-| hr-service и frontend / WildFly | HTTPS | `19443` |
-| WildFly management | HTTP, только `127.0.0.1` | `55054` |
-
-## 1. Что подготовить локально
-
-Нужны:
-
-- каталоги `apache-tomcat-10.1.60` и `wildfly-33.0.2.Final`;
-
-Собрать оба WAR из корня репозитория:
-
-```bash
-cd /Users/kirill/coding/SOA-Labs
-./gradlew clean :worker-service:bootWar :hr-service:bootWar
-```
-
-Получатся файлы:
+#### Размещение файлов на сервере
 
 ```text
-worker-service/build/libs/worker-service.war
-hr-service/build/libs/hr-service.war
+/home/studs/sXXXXXX/
+  webLab2/wildfly-33.0.2.Final/    общая установка для двух JVM WildFly
+  soa/apache-tomcat-10.1.60/      установка Tomcat
+  soa3/
+    worker-service.war          исходный артефакт worker HTTP
+    worker.ear                  исходный артефакт worker EJB
+    hr.ear                      один артефакт для обоих узлов HR
+    freebsd/                    consul.hcl, haproxy.cfg, tomcat-server.xml, schema.sql
+    tools/consul                Consul 1.21.5 для FreeBSD amd64
+    tools/haproxy               HAProxy 3.0.30, собранный на Helios
+    tls/                        worker.p12, worker.crt, worker-truststore.p12, hr.p12
+    tomcat/                     CATALINA_BASE; приложение в webapps/ROOT.war
+    wildfly-1/                  отдельные configuration, data, log, tmp, deployments
+    wildfly-2/                  отдельные configuration, data, log, tmp, deployments
+    logs/                       вывод фоновых процессов
+    run/                        могут оставаться старые PID-файлы; не считать их достоверными
 ```
 
-Задача `:hr-service:bootWar` сама выполняет `npm ci` и `npm run build`, после чего помещает frontend внутрь WAR.
+#### Окно A — PowerShell на Windows: подключение к Helios
 
-## 2. Передача файлов на Helios
+```powershell
+ssh -p 2222 sxxxxxx@se.ifmo.ru
+```
 
-Создать каталоги:
+Далее все блоки `bash` выполняются **на FreeBSD в Bash**, а не в локальном PowerShell.
+
+#### Перед запуском
 
 ```bash
-mkdir -p "/soa"
+ps -U "$(id -un)" -o pid,args
+sockstat -4 -l
+du -sk "$HOME/soa3"/* 2>/dev/null | sort -n
+df -h "$HOME/soa3"
+df -i "$HOME/soa3"
 ```
-
-С локального компьютера передать серверы, если их ещё нет на Helios:
+#### Общие переменные 
 
 ```bash
-scp -r /путь/к/apache-tomcat-10.1.60 \
-  s413041@helios:~/soa
-
-scp -r /путь/к/wildfly-33.0.2.Final \
-  s413041@helios:~/soa
-```
-
-Передать приложения:
-
-```bash
-cd /Users/kirill/coding/SOA-Labs
-
-scp worker-service/build/libs/worker-service.war \
-  s413041@helios:~/soa
-
-scp hr-service/build/libs/hr-service.war \
-  s413041@helios:~/soa
-```
-
-После копирования проверить права запуска:
-
-```bash
-ssh s413041@helios
-sh
-
-APP_HOME="$HOME/webLab2"
-TOMCAT_HOME="$APP_HOME/apache-tomcat-10.1.60"
-WILDFLY_HOME="$APP_HOME/wildfly-33.0.2.Final"
-
-chmod +x "$TOMCAT_HOME"/bin/*.sh
-chmod +x "$WILDFLY_HOME"/bin/*.sh
-```
-
-## 3. Проверка PostgreSQL
-
-Вместо `<ПАРОЛЬ_БД>` необходимо подставить .pgpass пользователя.
-
-Текущая конфигурация приложения использует `spring.jpa.hibernate.ddl-auto=create`, поэтому при перезапуске worker-service таблицы пересоздаются и ранее сохранённые данные могут быть потеряны.
-
-## 4. Сертификат worker-service
-
-Создать PKCS12 keystore для Tomcat. SAN содержит `helios.cs.ifmo.ru` и `127.0.0.1`, потому что доступ из браузера будет выполняться через SSH-туннель:
-
-```bash
-keytool -genkeypair \
-  -alias worker-service \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 3650 \
-  -storetype PKCS12 \
-  -keystore "$TOMCAT_HOME/conf/worker-service.p12" \
-  -storepass changeit \
-  -keypass changeit \
-  -dname "CN=helios.cs.ifmo.ru, OU=SOA, O=ITMO, C=RU" \
-  -ext "SAN=dns:helios.cs.ifmo.ru,ip:127.0.0.1"
-```
-
-Экспортировать публичный сертификат worker-service. Он понадобится WildFly для проверки HTTPS-соединения с Tomcat:
-
-```bash
-keytool -exportcert \
-  -rfc \
-  -alias worker-service \
-  -keystore "$TOMCAT_HOME/conf/worker-service.p12" \
-  -storepass changeit \
-  -file "$APP_HOME/worker-service.crt"
-```
-
-## 5. Настройка Tomcat
-
-### 5.1. HTTPS Connector
-
-Открыть файл:
-
-```bash
-vi "$TOMCAT_HOME/conf/server.xml"
-```
-
-Изменить shutdown-порт в корневом элементе `Server`, чтобы не использовать стандартный `8005`:
-
-```xml
-<Server port="18005" shutdown="SHUTDOWN">
-```
-
-Удалить или закомментировать обычный HTTP Connector на порту `8080`:
-
-```xml
-<!--
-<Connector port="8080" protocol="HTTP/1.1" ... />
--->
-```
-
-Добавить HTTPS Connector внутрь элемента `Service`:
-
-```xml
-<Connector
-        port="18443"
-        protocol="org.apache.coyote.http11.Http11NioProtocol"
-        address="0.0.0.0"
-        maxThreads="20"
-        minSpareThreads="2"
-        maxConnections="100"
-        acceptCount="10"
-        SSLEnabled="true"
-        scheme="https"
-        secure="true"
-        maxParameterCount="1000">
-    <SSLHostConfig>
-        <Certificate
-                certificateKeystoreFile="conf/worker-service.p12"
-                certificateKeystorePassword="changeit"
-                certificateKeystoreType="PKCS12"
-                certificateKeyAlias="worker-service"
-                type="RSA" />
-    </SSLHostConfig>
-</Connector>
-```
-
-### 5.2. Память и переменные окружения Tomcat
-
-Файл `setenv.sh` отсутствует в чистом Tomcat — его нужно создать самостоятельно:
-
-```bash
-vi "$TOMCAT_HOME/bin/setenv.sh"
-```
-
-Содержимое:
-
-```sh
-#!/bin/sh
-
-export CATALINA_OPTS="-Xms64m -Xmx256m -Xss512k -XX:MaxMetaspaceSize=128m -XX:ActiveProcessorCount=2 -Djava.awt.headless=true"
-
-export WORKER_DB_URL="jdbc:postgresql://localhost:5432/studs"
-export WORKER_DB_USERNAME="s413041"
-export WORKER_DB_PASSWORD="<ПАРОЛЬ_БД>"
-
-export WORKER_CORS_ALLOWED_ORIGINS="https://localhost:19443,https://127.0.0.1:19443,http://localhost:5173"
-```
-
-Ограничения `ActiveProcessorCount`, heap, metaspace и stack нужны из-за ограничений общего сервера Helios и уменьшают количество создаваемых JVM потоков.
-
-Ограничить доступ к файлу с паролем:
-
-```bash
-chmod 700 "$TOMCAT_HOME/bin/setenv.sh"
-chmod 600 "$TOMCAT_HOME/conf/worker-service.p12"
-```
-
-### 5.3. Деплой worker-service
-
-В чистом Tomcat уже существует демонстрационное приложение `ROOT`. Сохранить его под другим именем и поместить worker-service в корневой context:
-
-```bash
-if [ -d "$TOMCAT_HOME/webapps/ROOT" ]; then
-  mv "$TOMCAT_HOME/webapps/ROOT" "$TOMCAT_HOME/webapps/tomcat-root-backup"
-fi
-
-cp "$APP_HOME/artifacts/worker-service.war" "$TOMCAT_HOME/webapps/ROOT.war"
-```
-
-## 6. Сертификат и truststore hr-service
-
-Создать отдельный сертификат WildFly:
-
-```bash
-keytool -genkeypair \
-  -alias hr-service \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 3650 \
-  -storetype PKCS12 \
-  -keystore "$WILDFLY_HOME/standalone/configuration/hr-service.p12" \
-  -storepass changeit \
-  -keypass changeit \
-  -dname "CN=helios.cs.ifmo.ru, OU=SOA, O=ITMO, C=RU" \
-  -ext "SAN=dns:helios.cs.ifmo.ru,ip:127.0.0.1"
-```
-
-Создать truststore, через который hr-service будет доверять самоподписанному сертификату worker-service:
-
-```bash
-keytool -importcert \
-  -noprompt \
-  -alias worker-service \
-  -file "$APP_HOME/worker-service.crt" \
-  -storetype PKCS12 \
-  -keystore "$WILDFLY_HOME/standalone/configuration/worker-truststore.p12" \
-  -storepass changeit
-
-chmod 600 \
-  "$WILDFLY_HOME/standalone/configuration/hr-service.p12" \
-  "$WILDFLY_HOME/standalone/configuration/worker-truststore.p12"
-```
-
-## 7. Настройка WildFly
-
-### 7.1. Отдельная конфигурация
-
-Не изменять исходный `standalone.xml`. Создать копию:
-
-```bash
-cp \
-  "$WILDFLY_HOME/standalone/configuration/standalone.xml" \
-  "$WILDFLY_HOME/standalone/configuration/standalone-hr.xml"
-```
-
-Запустить CLI в embedded-режиме:
-
-```bash
-cd "$WILDFLY_HOME"
-bin/jboss-cli.sh
-```
-
-Выполнить команды последовательно:
-
-```text
-embed-server --server-config=standalone-hr.xml
-
-/subsystem=elytron/key-store=hrKS:add(path=hr-service.p12,relative-to=jboss.server.config.dir,credential-reference={clear-text=changeit},type=PKCS12)
-/subsystem=elytron/key-manager=hrKM:add(key-store=hrKS,alias-filter=hr-service,credential-reference={clear-text=changeit})
-/subsystem=elytron/server-ssl-context=hrSSC:add(key-manager=hrKM,protocols=["TLSv1.2","TLSv1.3"])
-/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=ssl-context,value=hrSSC)
-
-/socket-binding-group=standard-sockets/socket-binding=https:write-attribute(name=port,value=19443)
-/socket-binding-group=standard-sockets/socket-binding=management-http:write-attribute(name=port,value=55054)
-
-/subsystem=remoting/http-connector=http-remoting-connector:write-attribute(name=connector-ref,value=https)
-/subsystem=undertow/server=default-server/http-listener=default:remove()
-
-/subsystem=io/worker=default:write-attribute(name=io-threads,value=2)
-/subsystem=io/worker=default:write-attribute(name=task-core-threads,value=2)
-/subsystem=io/worker=default:write-attribute(name=task-max-threads,value=16)
-
-stop-embedded-server
-quit
-```
-
-Порядок важен: remoting сначала переводится на listener `https`, и только после этого удаляется HTTP listener. Иначе WildFly запускается с ошибкой `jboss.http-upgrade-registry.default`.
-
-Socket binding `http` может оставаться в XML: без Undertow HTTP listener он не открывает сетевой порт.
-
-### 7.2. Память и переменные окружения WildFly
-
-Создать отдельный файл параметров:
-
-```bash
-vi "$WILDFLY_HOME/bin/standalone-hr.conf"
-```
-
-Содержимое:
-
-```sh
-#!/bin/sh
-
-JAVA_OPTS="-Xms64m -Xmx256m -Xss512k -XX:MaxMetaspaceSize=128m -XX:ActiveProcessorCount=2"
-JAVA_OPTS="$JAVA_OPTS -Djava.awt.headless=true -Djava.net.preferIPv4Stack=true"
-JAVA_OPTS="$JAVA_OPTS -Djava.util.concurrent.ForkJoinPool.common.parallelism=2"
-JAVA_OPTS="$JAVA_OPTS -Djavax.net.ssl.trustStore=$HOME/webLab2/wildfly-33.0.2.Final/standalone/configuration/worker-truststore.p12"
-JAVA_OPTS="$JAVA_OPTS -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12"
-export JAVA_OPTS
-
-export WORKER_SERVICE_BASE_URL="https://127.0.0.1:18443"
+export APP_HOME="$HOME/soa3"
+export ARTIFACTS="$APP_HOME"
+export JAVA_HOME="/usr/local/openjdk17"
+export PATH="$JAVA_HOME/bin:$PATH"
+export WILDFLY_HOME="$HOME/webLab2/wildfly-33.0.2.Final"
+export CATALINA_HOME="$HOME/soa/apache-tomcat-10.1.60"
+export CATALINA_BASE="$APP_HOME/tomcat"
+export CONSUL_BIN="$APP_HOME/tools/consul"
+export HAPROXY_BIN="$APP_HOME/tools/haproxy"
+export CONSUL_HTTP_ADDR="http://127.0.0.1:18500"
+
+export WORKER_DB_URL="jdbc:postgresql://127.0.0.1:5432/studs"
+export WORKER_DB_USERNAME="sXXXXXX"
+export WORKER_DB_POOL_MAX="3"
+export WORKER_EJB_POOL_MAX="4"
+export HR_EJB_POOL_MAX="3"
+export WORKER_EJB_USERNAME="worker-client"
+export WORKER_EJB_URL="remote+http://127.0.0.1:19080"
+export WORKER_PUBLIC_URL="https://127.0.0.1:18443"
+export WORKER_INSTANCE_ID="worker-1"
 export WORKER_SERVICE_CONNECT_TIMEOUT="3s"
 export WORKER_SERVICE_READ_TIMEOUT="5s"
-export HR_CORS_ALLOWED_ORIGINS="https://localhost:19443,https://127.0.0.1:19443,http://localhost:5173"
-```
+export WORKER_CORS_ALLOWED_ORIGINS="https://localhost:19443"
+export HR_CORS_ALLOWED_ORIGINS="https://localhost:19443"
 
-Ограничить доступ:
+read -r -s -p "Пароль PostgreSQL: " WORKER_DB_PASSWORD
+printf '\n'
+export WORKER_DB_PASSWORD
+read -r -s -p "Пароль EJB-пользователя worker-client: " WORKER_EJB_PASSWORD
+printf '\n'
+export WORKER_EJB_PASSWORD
+read -r -s -p "Пароль TLS-хранилищ: " TLS_PASSWORD
+printf '\n'
+export TLS_PASSWORD
+
+unset _JAVA_OPTIONS
+export TOMCAT_JAVA_OPTS="-Xms32m -Xmx128m -Xss512k -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -XX:+UseSerialGC -XX:ActiveProcessorCount=2"
+export WF1_JAVA_OPTS="-Xms64m -Xmx256m -Xss512k -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=48m -XX:+UseSerialGC -XX:ActiveProcessorCount=2"
+export WF2_JAVA_OPTS="-Xms32m -Xmx192m -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -XX:+UseSerialGC -XX:ActiveProcessorCount=2"
+
+export WF_MODULE_OPTS="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
+export WF_MODULE_OPTS="$WF_MODULE_OPTS --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.security=ALL-UNNAMED"
+export WF_MODULE_OPTS="$WF_MODULE_OPTS --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.management/javax.management=ALL-UNNAMED --add-opens=java.naming/javax.naming=ALL-UNNAMED"
+export WF_MODULE_OPTS="$WF_MODULE_OPTS --add-exports=java.desktop/sun.awt=ALL-UNNAMED --add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-exports=java.naming/com.sun.jndi.url.ldap=ALL-UNNAMED --add-exports=java.naming/com.sun.jndi.url.ldaps=ALL-UNNAMED --add-exports=jdk.naming.dns/com.sun.jndi.dns=ALL-UNNAMED"
+
+export WF_EXTRA="-Djava.awt.headless=true -Djava.net.preferIPv4Stack=true -Djava.util.concurrent.ForkJoinPool.common.parallelism=1"
+export WF_EXTRA="$WF_EXTRA -Djavax.net.ssl.trustStore=$APP_HOME/tls/worker-truststore.p12 -Djavax.net.ssl.trustStorePassword=$TLS_PASSWORD -Djavax.net.ssl.trustStoreType=PKCS12"
+export CLI_JAVA_OPTS="-Xms16m -Xmx128m -XX:MaxMetaspaceSize=96m -XX:+UseSerialGC -XX:ActiveProcessorCount=1"
+export CATALINA_OPTS="$TOMCAT_JAVA_OPTS -Djava.awt.headless=true -Dsoa.tls.password=$TLS_PASSWORD -Dorg.jboss.ejb.client.invocation.timeout=10000 -Dworker.cors.allowed-origins=https://localhost:19443"
+
+umask 077
+cd "$APP_HOME"
+```
 
 ```bash
-chmod 600 "$WILDFLY_HOME/bin/standalone-hr.conf"
+ls -l "$WILDFLY_HOME/bin/standalone.sh" "$CATALINA_HOME/bin/catalina.sh"
+ls -l "$APP_HOME/wildfly-1/configuration/standalone.xml" "$APP_HOME/wildfly-2/configuration/standalone.xml"
+ls -l "$APP_HOME/freebsd/consul.hcl" "$APP_HOME/freebsd/haproxy.cfg" "$CATALINA_BASE/conf/server.xml"
+ls -l "$APP_HOME/tls/worker.crt" "$APP_HOME/tls/worker-truststore.p12"
+ls -l "$CATALINA_BASE/conf/worker.p12" "$CATALINA_BASE/webapps/ROOT.war"
+ls -l "$APP_HOME/wildfly-1/configuration/hr.p12" "$APP_HOME/wildfly-2/configuration/hr.p12"
+"$CONSUL_BIN" version
+"$HAPROXY_BIN" -vv
 ```
 
-Не использовать одновременно точные порты из `standalone-hr.xml` и `-Djboss.socket.binding.port-offset`: offset изменит все порты и вместо `19443` получится другое значение.
-
-## 8. Первый запуск worker-service
-
-Для первой проверки запустить Tomcat в foreground:
+#### Consul
 
 ```bash
-cd "$TOMCAT_HOME"
-bin/catalina.sh run
+mkdir -p "$APP_HOME/logs" "$APP_HOME/consul-data"
+nohup env GOMAXPROCS=2 GOMEMLIMIT=96MiB SSL_CERT_FILE="$APP_HOME/tls/worker.crt" "$CONSUL_BIN" agent -config-file="$APP_HOME/freebsd/consul.hcl" -data-dir="$APP_HOME/consul-data" > "$APP_HOME/logs/consul.log" 2>&1 < /dev/null &
+CONSUL_PID=$!
 ```
 
-Успешный запуск содержит сообщение о старте сервера без ошибок deployment. В другом SSH-сеансе проверить:
+Проверка: 
 
 ```bash
-curl -ki "https://127.0.0.1:18443/workers?page=1&size=1"
+tail -n 30 "$APP_HOME/logs/consul.log"
+curl -fsS http://127.0.0.1:18500/v1/status/leader
 ```
 
-После проверки остановить foreground-процесс через `Ctrl+C`, затем запустить в фоне:
+
+#### WildFly 1
 
 ```bash
-cd "$TOMCAT_HOME"
-bin/startup.sh
+export NODE_ID="hr-1"
+export NODE_HTTP_PORT="19080"
+export NODE_HTTPS_PORT="19444"
+export NODE_MANAGEMENT_PORT="19990"
+export NODE_RECOVERY_PORT="14712"
+export NODE_STATUS_PORT="14713"
+export NODE_BASE="$APP_HOME/wildfly-1"
+
+nohup env STANDALONE_CONF=/dev/null COMMON_CONF=/dev/null JAVA_OPTS="$WF1_JAVA_OPTS $WF_MODULE_OPTS $WF_EXTRA" "$WILDFLY_HOME/bin/standalone.sh" -Djboss.server.base.dir="$NODE_BASE" --server-config=standalone.xml -b=127.0.0.1 -bmanagement=127.0.0.1 > "$APP_HOME/logs/wildfly-1.log" 2>&1 < /dev/null &
+WF1_LAUNCH_PID=$!
+tail -f "$APP_HOME/logs/wildfly-1.log"
 ```
 
-Логи:
+Дождитесь завершения старта. `Ctrl+C` при просмотре через `tail -f` закрывает только просмотр; фоновый WildFly продолжает работать. Одного сообщения `started` недостаточно: проверьте deployments.
+
+В Bash откройте CLI работающего сервера:
 
 ```bash
-tail -f "$TOMCAT_HOME/logs/catalina.out"
+JAVA_OPTS="$CLI_JAVA_OPTS" "$WILDFLY_HOME/bin/jboss-cli.sh" --connect --controller=127.0.0.1:19990
 ```
 
-## 9. Первый запуск WildFly
-
-Запустить WildFly в foreground:
-
-```bash
-cd "$WILDFLY_HOME"
-env STANDALONE_CONF="$WILDFLY_HOME/bin/standalone-hr.conf" \
-  bin/standalone.sh \
-  --server-config=standalone-hr.xml \
-  -b=0.0.0.0 \
-  -bmanagement=127.0.0.1
-```
-
-Не добавлять `port-offset`.
-
-В другом SSH-сеансе подключиться к CLI:
-
-```bash
-cd "$WILDFLY_HOME"
-bin/jboss-cli.sh --connect --controller=127.0.0.1:55054
-```
-
-Задеплоить hr-service как корневое приложение:
+**Следующий блок — в WildFly CLI**,  `[standalone@127.0.0.1:19990 /]`:
 
 ```text
-deploy /home/studs/s413041/webLab2/artifacts/hr-service.war --name=ROOT.war --runtime-name=ROOT.war --force
+deployment-info
+```
+
+Ожидаются `postgresql-42.7.4.jar`, `worker.ear` и `hr.ear`, приложения — со статусом `OK`. Deployments, выполненные через CLI, сохраняются в конфигурации и переживают перезапуск.
+
+Только если соответствующего EAR нет в списке, выполните его команду:
+
+```text
+deploy /home/studs/sXXXXXX/soa3/worker.ear
+deploy /home/studs/sXXXXXX/soa3/hr.ear
+```
+
+```text
 deployment-info
 quit
 ```
 
-Ожидаемые состояния `ROOT.war`: `OK` и `ENABLED`.
+`quit` закрывает CLI, а не сервер. 
 
-После первой проверки остановить foreground-процесс через `Ctrl+C` и запустить WildFly в фоне:
-
-```bash
-cd "$WILDFLY_HOME"
-nohup env STANDALONE_CONF="$WILDFLY_HOME/bin/standalone-hr.conf" \
-  bin/standalone.sh \
-  --server-config=standalone-hr.xml \
-  -b=0.0.0.0 \
-  -bmanagement=127.0.0.1 \
-  > "$APP_HOME/logs/wildfly-console.log" 2>&1 &
-```
-
-Логи:
+Проверка в Bash:
 
 ```bash
-tail -f "$APP_HOME/logs/wildfly-console.log"
+curl -i http://127.0.0.1:19080/health
 ```
 
-## 10. Проверка на Helios
+Ожидается `200` и `hr-1`. Источник подробных ошибок: `tail -n 150 "$APP_HOME/wildfly-1/log/server.log"`.
 
-Проверить открытые Java-порты:
+#### Tomcat / worker HTTP
 
 ```bash
-sockstat -4 -l | grep java
+nohup env NODE_ID=worker-1 JAVA_OPTS="" CATALINA_OPTS="$CATALINA_OPTS" "$CATALINA_HOME/bin/catalina.sh" run > "$APP_HOME/logs/tomcat.log" 2>&1 < /dev/null &
+TOMCAT_PID=$!
+tail -f "$APP_HOME/logs/tomcat.log"
 ```
 
-Должны присутствовать:
+Дождитесь старта worker, затем завершите только просмотр через `Ctrl+C`.
 
-- `*:18443` — worker-service;
-- `*:19443` — hr-service и frontend;
-- `127.0.0.1:55054` — WildFly management.
-
-HTTP-порты приложений `8080` и `8081` слушаться не должны.
-
-Проверить процессы и реальные JVM-параметры:
+Если нужно видеть вывод прямо в терминале, вместо фоновой команды можно выполнить `NODE_ID=worker-1 JAVA_OPTS="" "$CATALINA_HOME/bin/catalina.sh" run`. Тогда этот терминал должен оставаться открытым: `Ctrl+C` остановит Tomcat. Не выполняйте оба варианта одновременно. Foreground не отменяет запись внутренних логов Tomcat и необходимость места на диске.
 
 ```bash
-jps -lv
+curl -i --cacert "$APP_HOME/tls/worker.crt" https://127.0.0.1:18443/health
+curl -fsS "http://127.0.0.1:18500/v1/health/service/worker-service?passing=true"
 ```
 
-Процесс `Jps` в выводе является временной утилитой самой команды и сразу завершается.
+Ожидается worker `200`, `node=worker-1`, затем непустой массив Consul. Проверка Consul выполняется каждые 15 секунд; сразу после старта массив может быть пуст. Worker health вызывает Remote EJB и запрос к БД.
 
-Проверить worker-service:
+####  WildFly 2
 
 ```bash
-curl -ki "https://127.0.0.1:18443/workers?page=1&size=1"
+export NODE_ID="hr-2"
+export NODE_HTTP_PORT="19081"
+export NODE_HTTPS_PORT="19445"
+export NODE_MANAGEMENT_PORT="19991"
+export NODE_RECOVERY_PORT="14812"
+export NODE_STATUS_PORT="14813"
+export NODE_BASE="$APP_HOME/wildfly-2"
+
+nohup env STANDALONE_CONF=/dev/null COMMON_CONF=/dev/null JAVA_OPTS="$WF2_JAVA_OPTS $WF_MODULE_OPTS $WF_EXTRA" "$WILDFLY_HOME/bin/standalone.sh" -Djboss.server.base.dir="$NODE_BASE" --server-config=standalone.xml -b=127.0.0.1 -bmanagement=127.0.0.1 > "$APP_HOME/logs/wildfly-2.log" 2>&1 < /dev/null &
+WF2_LAUNCH_PID=$!
+tail -f "$APP_HOME/logs/wildfly-2.log"
 ```
 
-Проверить hr-service и встроенный frontend:
+После старта завершите просмотр лога через `Ctrl+C`. Откройте CLI **второго** узла:
 
 ```bash
-curl -ki https://127.0.0.1:19443/openapi/hr-service.yaml
-curl -ki https://127.0.0.1:19443/
+JAVA_OPTS="$CLI_JAVA_OPTS" "$WILDFLY_HOME/bin/jboss-cli.sh" --connect --controller=127.0.0.1:19991
 ```
 
-Проверить вызов worker-service из hr-service без изменения данных:
-
-```bash
-curl -ki -X POST \
-  https://127.0.0.1:19443/hr/index/2147483647/1.1
-```
-
-Ожидается HTTP `422`. Если возвращается `503`, следует проверить truststore и доступность worker-service.
-
-Проверить CORS worker-service:
-
-```bash
-curl -ksi \
-  -H "Origin: https://localhost:19443" \
-  "https://127.0.0.1:18443/workers?page=1&size=1" \
-  | grep -i access-control
-```
-
-Ожидаемый заголовок:
+В CLI:
 
 ```text
-Access-Control-Allow-Origin: https://localhost:19443
+deployment-info
 ```
 
-## 11. Доступ из браузера через SSH-туннели
-
-На локальном компьютере:
-
-```bash
-ssh \
-  -L 18443:127.0.0.1:18443 \
-  -L 19443:127.0.0.1:19443 \
-  s413041@helios
-```
-
-Терминал с туннелем должен оставаться открытым.
-
-Сначала открыть в браузере worker-service и вручную принять его самоподписанный сертификат:
+Только если `hr.ear` отсутствует:
 
 ```text
-https://localhost:18443/openapi/worker-service.yaml
+deploy /home/studs/sXXXXXX/soa3/hr.ear
 ```
-
-После отображения YAML открыть frontend:
 
 ```text
-https://localhost:19443/
+deployment-info
+quit
 ```
 
-Для сертификата WildFly также потребуется вручную подтвердить доверие. В настройках frontend должны быть адреса:
+На втором узле достаточно `hr.ear` со статусом `OK`. Worker EAR и WorkerDS нужны только первому узлу.
 
-```text
-worker-service: https://localhost:18443
-hr-service:     https://localhost:19443
-```
-
-`curl -k` игнорирует недоверенный сертификат, а браузерный `fetch` этого делать не может. Поэтому ошибка `ERR_CERT_AUTHORITY_INVALID` устраняется принятием сертификата worker-service в самом браузере либо добавлением сертификата в локальное доверенное хранилище.
-
-## 12. Повторный деплой
-
-Локально пересобрать приложения:
+В Bash:
 
 ```bash
-./gradlew :worker-service:bootWar :hr-service:bootWar
+curl -i http://127.0.0.1:19081/health
 ```
 
-Передать новые WAR:
+Ожидается `200` и `hr-2`.
+
+#### 1.3.5. HAProxy
 
 ```bash
-scp worker-service/build/libs/worker-service.war \
-  s413041@helios:/home/studs/s413041/webLab2/artifacts/
-
-scp hr-service/build/libs/hr-service.war \
-  s413041@helios:/home/studs/s413041/webLab2/artifacts/
+"$HAPROXY_BIN" -c -f "$APP_HOME/freebsd/haproxy.cfg"
+echo $?
 ```
 
-Worker-service обновляется после остановки Tomcat:
+Код должен быть `0`. Проверяйте его сразу после команды. Затем запустите в фоне без дополнительного файла лога/PID:
 
 ```bash
-"$TOMCAT_HOME/bin/shutdown.sh"
-cp "$APP_HOME/artifacts/worker-service.war" "$TOMCAT_HOME/webapps/ROOT.war"
-"$TOMCAT_HOME/bin/startup.sh"
+nohup "$HAPROXY_BIN" -db -f "$APP_HOME/freebsd/haproxy.cfg" > /dev/null 2>&1 < /dev/null &
+HAPROXY_PID=$!
+ps -p "$HAPROXY_PID" -o pid,args
 ```
 
-Hr-service обновляется без перезапуска WildFly:
+Если процесс сразу завершился, запустите `"$HAPROXY_BIN" -db -f "$APP_HOME/freebsd/haproxy.cfg"` в foreground для просмотра ошибки. При успешном foreground-запуске отсутствие вывода нормально; проверяйте запросы из другого терминала. `Ctrl+C` остановит HAProxy.
 
 ```bash
-cd "$WILDFLY_HOME"
-bin/jboss-cli.sh \
-  --connect \
-  --controller=127.0.0.1:55054 \
-  --command="deploy /home/studs/s413041/webLab2/artifacts/hr-service.war --name=ROOT.war --runtime-name=ROOT.war --force"
+for n in 1 2 3 4; do
+    curl -ksS -H 'Connection: close' -w '\n' https://127.0.0.1:19443/health
+done
 ```
 
-После обновления frontend выполнить жёсткую перезагрузку страницы: `Cmd+Shift+R` или `Ctrl+Shift+R`.
+Ожидаются оба имени: `hr-1` и `hr-2`. Для демонстрации используются отдельные соединения; запросы одного соединения могут попадать на один узел.
 
-## 13. Остановка
+### Подключение с компьютера и открытие клиента
 
-Tomcat:
+#### Окно B — новое окно PowerShell на Windows: туннель
+
+```powershell
+ssh -p 2222 -N -o ExitOnForwardFailure=yes -L 18443:127.0.0.1:18443 -L 19443:127.0.0.1:19443 sxxxxxxx@se.ifmo.ru
+```
+ **Оставьте окно открытым, не нажимайте Ctrl+C.** 
+
+#### Окно C — ещё одно окно PowerShell: проверка
+
+```powershell
+curl.exe -ki https://localhost:18443/health
+curl.exe -ki https://localhost:19443/health
+```
+
+Ожидаются `200`, `worker-1` и один из `hr-1`/`hr-2`. `-k` 
+
+#### Браузер
+
+1. Откройте <https://localhost:18443/health>. Разрешите исключение для созданного в этой работе сертификата worker. Должен открыться JSON `UP`.
+2. Откройте <https://localhost:19443/>. Отдельно разрешите сертификат HR.
+3. В клиенте нажмите **«Подключение»**. Укажите worker `https://localhost:18443`, HR `https://localhost:19443`, нажмите **«Сохранить»**. Эти адреса сохраняются в localStorage браузера.
+4. Дождитесь загрузки списка работников. Клиент уже включён в `hr.ear`; Node.js на сервере запускать не нужно.
+
+Два сервиса имеют разные сертификаты. Разрешение HR не разрешает worker автоматически. Корень `https://localhost:18443/` не является страницей клиента; там возможен `404`. Клиент находится на `19443`.
+
+#### Проверка доступа клиента к worker
+
+```powershell
+curl.exe -ki -H "Origin: https://localhost:19443" "https://localhost:18443/workers?page=1&size=1"
+```
+
+Ожидаются `200` и `Access-Control-Allow-Origin: https://localhost:19443`. При `403 Invalid CORS request` перезапустите Tomcat с явным `-Dworker.cors.allowed-origins=https://localhost:19443` из раздела 1.2. Пересборка WAR для этого не нужна.
+
+## 2. Остановка проекта
+
+Останавливайте компоненты в порядке **HAProxy → Tomcat → WildFly 2 → WildFly 1 → Consul**, после чего закройте туннель. Команды выполняйте по шагам, дожидаясь завершения каждого компонента. PostgreSQL и приложения других лабораторных не останавливайте.
+
+### Подключение и переменные
+
+В Bash на FreeBSD выполните следующий блок. Он не зависит от переменных, оставшихся после запуска; вводить пароли БД, EJB и TLS для остановки не нужно:
 
 ```bash
-"$TOMCAT_HOME/bin/shutdown.sh"
+export APP_HOME="$HOME/soa3"
+export JAVA_HOME="/usr/local/openjdk17"
+export PATH="$JAVA_HOME/bin:$PATH"
+export WILDFLY_HOME="$HOME/webLab2/wildfly-33.0.2.Final"
+export CONSUL_BIN="$APP_HOME/tools/consul"
+export CLI_JAVA_OPTS="-Xms16m -Xmx128m -XX:MaxMetaspaceSize=96m -XX:+UseSerialGC -XX:ActiveProcessorCount=1"
+unset _JAVA_OPTIONS
+ps -U "$(id -un)" -o pid,args
 ```
 
-WildFly:
+PID берите из текущего списка процессов. Значения `$!`, переменные PID и файлы от прошлого запуска могут устареть. Не используйте `killall java`: это затронет другие приложения.
+
+### HAProxy
+
+Найдите процесс с командой `$APP_HOME/tools/haproxy` и конфигурацией `$APP_HOME/freebsd/haproxy.cfg`. Введите его числовой PID и ещё раз проверьте команду:
 
 ```bash
-"$WILDFLY_HOME/bin/jboss-cli.sh" \
-  --connect \
-  --controller=127.0.0.1:55054 \
-  --command=":shutdown"
+read -r -p "PID HAProxy этой лабораторной: " HAPROXY_PID
+ps -p "$HAPROXY_PID" -o pid,args
 ```
-
-Проверка оставшихся JVM:
 
 ```bash
-jps -lv
+kill -USR1 "$HAPROXY_PID"
 ```
-
-Если штатная остановка не сработала, определить PID нужного процесса через `jps -lv` и отправить обычный `TERM`:
 
 ```bash
-kill <PID>
+ps -p "$HAPROXY_PID" -o pid,args
 ```
 
-`kill -9` следует использовать только в крайнем случае.
+После завершения строки с процессом быть не должно. Если компонент уже остановлен, пропустите его шаг; не вводите произвольный PID.
 
-## 14. Диагностика нехватки native threads
+### Tomcat
 
-Проверить количество потоков конкретной JVM:
+Снова посмотрите список процессов:
 
 ```bash
-ps -M <PID> | wc -l
+ps -U "$(id -un)" -o pid,args
 ```
 
-Проверить ограничения пользователя:
+Найдите **Java-процесс Tomcat** с `-Dcatalina.base=/home/studs/sXXXXXX/soa3/tomcat`. Введите его PID и проверьте:
 
 ```bash
-limits -a
+read -r -p "PID Java-процесса Tomcat этой лабораторной: " TOMCAT_PID
+ps -p "$TOMCAT_PID" -o pid,args
 ```
 
-Проверить память и процессы:
+После проверки выполните:
 
 ```bash
-top
+kill -TERM "$TOMCAT_PID"
 ```
 
-Ошибка `unable to create native thread` не обязательно означает нехватку Java heap. На Helios она также возникает при слишком большом числе JVM-потоков или одновременном запуске нескольких экземпляров WildFly. Поэтому конфигурация ограничивает `ActiveProcessorCount`, Undertow/XNIO worker и размер stack каждого потока.
+Дождитесь завершения Tomcat. При штатном закрытии worker снимает регистрацию в Consul. Проверьте:
 
-## Справочные материалы
+```bash
+ps -p "$TOMCAT_PID" -o pid,args
+tail -n 30 "$APP_HOME/logs/tomcat.log"
+```
 
-- [Tomcat 10.1: SSL/TLS Configuration](https://tomcat.apache.org/tomcat-10.1-doc/ssl-howto.html)
-- [Tomcat 10.1: HTTP Connector](https://tomcat.apache.org/tomcat-10.1-doc/config/http.html)
-- [WildFly Elytron Security Guide](https://docs.wildfly.org/28/WildFly_Elytron_Security.html)
-- [WildFly 33 documentation](https://docs.wildfly.org/33/)
+### Два WildFly
 
-## Вариант задания
+В Bash остановите второй узел:
 
-![Вариант лабораторной работы №1](variants/soa%20lab-1%20var.png)
+```bash
+JAVA_OPTS="$CLI_JAVA_OPTS" "$WILDFLY_HOME/bin/jboss-cli.sh" --connect --controller=127.0.0.1:19991 --command=:shutdown
+```
 
-![Вариант лабораторной работы №2](variants/soa%20lab-2%20var.jpg)
+Дождитесь сообщения об остановке в логе:
+
+```bash
+tail -n 30 "$APP_HOME/wildfly-2/log/server.log"
+```
+
+Затем остановите первый узел:
+
+```bash
+JAVA_OPTS="$CLI_JAVA_OPTS" "$WILDFLY_HOME/bin/jboss-cli.sh" --connect --controller=127.0.0.1:19990 --command=:shutdown
+tail -n 30 "$APP_HOME/wildfly-1/log/server.log"
+```
+
+Ожидаются ответ CLI `"outcome" => "success"` и сообщение `WFLYSRV0050` об остановке в каждом логе. Если CLI не подключается, проверьте процессы и порты: сервер мог быть уже выключен; одна ошибка подключения не подтверждает остановку.
+
+### Consul
+
+Когда приложения остановлены, завершите Consul:
+
+```bash
+"$CONSUL_BIN" leave -http-addr=http://127.0.0.1:18500
+```
+
+### Проверка и закрытие окон
+
+```bash
+ps -U "$(id -un)" -o pid,args
+sockstat -4 -l
+```

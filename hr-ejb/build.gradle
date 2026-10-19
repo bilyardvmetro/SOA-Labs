@@ -1,0 +1,18 @@
+dependencies {
+    implementation project(':hr-contract')
+    compileOnly 'jakarta.platform:jakarta.jakartaee-api:10.0.0'
+    implementation 'org.springframework:spring-web'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}
+tasks.named('jar') { archiveFileName = 'hr-ejb.jar' }
+
+configurations {
+    earLibraries {
+        canBeConsumed = true
+        canBeResolved = false
+        extendsFrom implementation, runtimeOnly
+    }
+}
