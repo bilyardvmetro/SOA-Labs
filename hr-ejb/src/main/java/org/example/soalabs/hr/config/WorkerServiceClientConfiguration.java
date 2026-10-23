@@ -27,11 +27,14 @@ public class WorkerServiceClientConfiguration {
     @PostConstruct
     void initialize() {
         WorkerServiceProperties properties = WorkerServiceProperties.environment();
+
         mapper = JsonMapper.builder().addModule(new JavaTimeModule())
                 .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS).build();
+
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(properties.connectTimeout());
         factory.setReadTimeout(properties.readTimeout());
+
         builder = RestClient.builder().requestFactory(factory)
                 .messageConverters(converters -> {
                     converters.removeIf(MappingJackson2HttpMessageConverter.class::isInstance);
