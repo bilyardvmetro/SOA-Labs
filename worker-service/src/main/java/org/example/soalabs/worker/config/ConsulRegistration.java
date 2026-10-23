@@ -27,14 +27,18 @@ public class ConsulRegistration {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);
         factory.setReadTimeout(3000);
+
         consul = RestClient.builder().baseUrl(env.getProperty("CONSUL_HTTP_ADDR", "http://127.0.0.1:18500"))
                 .requestFactory(factory).build();
+
         id = env.getProperty("WORKER_INSTANCE_ID", "worker-1");
+
         URI publicUrl = URI.create(env.getProperty("WORKER_PUBLIC_URL", "https://127.0.0.1:18443"));
         if (publicUrl.getHost() == null || publicUrl.getPort() < 1 ||
                 !("http".equals(publicUrl.getScheme()) || "https".equals(publicUrl.getScheme()))) {
             throw new IllegalArgumentException("WORKER_PUBLIC_URL must specify HTTP(S) host and port");
         }
+
         registration = Map.of(
                 "ID", id, "Name", "worker-service",
                 "Address", publicUrl.getHost(), "Port", publicUrl.getPort(),
