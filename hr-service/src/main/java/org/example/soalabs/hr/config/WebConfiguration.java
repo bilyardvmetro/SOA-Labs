@@ -11,16 +11,16 @@ public class WebConfiguration implements WebMvcConfigurer {
     private final String[] allowedOrigins;
 
     public WebConfiguration(
-            @Value("${hr.cors.allowed-origins:http://localhost:5173}") String[] allowedOrigins
+            @Value("${hr.cors.allowed-origins:https://localhost:19443,http://localhost:5173}") String[] allowedOrigins
     ) {
         this.allowedOrigins = allowedOrigins;
     }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
+        registry.addMapping("/hr/**")
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "OPTIONS")
-                .allowedHeaders("*");
+                .allowedHeaders("Accept", "Content-Type");
     }
 }

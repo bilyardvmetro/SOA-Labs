@@ -6,4 +6,4 @@ spring:
       fail-on-unknown-properties: true
 worker:
   cors:
-    allowed-origins: ${WORKER_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    allowed-origins: ${WORKER_CORS_ALLOWED_ORIGINS:https://localhost:19443,http://localhost:5173}

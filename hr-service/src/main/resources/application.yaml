@@ -6,4 +6,4 @@ spring:
       fail-on-unknown-properties: true
 hr:
   cors:
-    allowed-origins: ${HR_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    allowed-origins: ${HR_CORS_ALLOWED_ORIGINS:https://localhost:19443,http://localhost:5173}
