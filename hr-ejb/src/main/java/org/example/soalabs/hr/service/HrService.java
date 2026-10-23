@@ -5,6 +5,7 @@ import org.example.soalabs.hr.api.dto.OrganizationDto;
 import org.example.soalabs.hr.api.dto.WorkerDto;
 import org.example.soalabs.hr.client.WorkerServiceClient;
 import org.example.soalabs.hr.client.dto.WorkerUpdateRequest;
+import org.example.soalabs.hr.config.WorkerServiceClientConfiguration;
 import org.example.soalabs.hr.domain.WorkerStatus;
 
 
@@ -18,7 +19,7 @@ public class HrService implements HrRemote {
     private static final BigDecimal MAX_INT = BigDecimal.valueOf(Integer.MAX_VALUE);
 
     @EJB
-    private org.example.soalabs.hr.config.WorkerServiceClientConfiguration clients;
+    private WorkerServiceClientConfiguration clients;
 
     public void health() { clients.health(); }
 
