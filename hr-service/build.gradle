@@ -14,6 +14,7 @@ dependencies {
     implementation 'org.webjars:swagger-ui:5.18.2'
     providedCompile project(':hr-contract')
     compileOnly 'jakarta.ejb:jakarta.ejb-api:4.0.1'
+    compileOnly 'jakarta.xml.ws:jakarta.xml.ws-api:4.0.2'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

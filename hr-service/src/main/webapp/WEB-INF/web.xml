@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee" version="6.0">
+    <servlet>
+        <servlet-name>HrSoapEndpoint</servlet-name>
+        <servlet-class>org.example.soalabs.hr.soap.HrSoapEndpoint</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>HrSoapEndpoint</servlet-name>
+        <url-pattern>/soap/hr</url-pattern>
+    </servlet-mapping>
+</web-app>
