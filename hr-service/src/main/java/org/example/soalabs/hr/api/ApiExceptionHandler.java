@@ -1,12 +1,9 @@
 package org.example.soalabs.hr.api;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.ConstraintViolationException;
+import jakarta.xml.ws.WebServiceException;
 import org.example.soalabs.hr.api.dto.ErrorResponse;
-import org.example.soalabs.hr.service.EntityConflictException;
-import org.example.soalabs.hr.service.UpstreamBadGatewayException;
-import org.example.soalabs.hr.service.UpstreamUnavailableException;
-import org.example.soalabs.hr.service.WorkerNotFoundException;
+import org.example.soalabs.hr.soap.HrFault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -16,35 +13,27 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import java.time.Instant;
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = HrController.class)
 public class ApiExceptionHandler {
 
-    @ExceptionHandler(WorkerNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleWorkerNotFound(WorkerNotFoundException exception,
-                                                              HttpServletRequest request) {
-        return response(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request);
+    @ExceptionHandler(HrFault.class)
+    public ResponseEntity<ErrorResponse> handleSoapFault(HrFault exception, HttpServletRequest request) {
+        HttpStatus status = switch (exception.getFaultInfo().getCode()) {
+            case INVALID_REQUEST -> HttpStatus.BAD_REQUEST;
+            case WORKER_NOT_FOUND -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case CONFLICT -> HttpStatus.CONFLICT;
+            case UPSTREAM_BAD_GATEWAY -> HttpStatus.BAD_GATEWAY;
+            case UPSTREAM_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+        };
+        return response(status, exception.getMessage(), request);
     }
 
-    @ExceptionHandler(EntityConflictException.class)
-    public ResponseEntity<ErrorResponse> handleConflict(EntityConflictException exception,
-                                                        HttpServletRequest request) {
-        return response(HttpStatus.CONFLICT, exception.getMessage(), request);
-    }
-
-    @ExceptionHandler(UpstreamBadGatewayException.class)
-    public ResponseEntity<ErrorResponse> handleBadGateway(UpstreamBadGatewayException exception,
-                                                          HttpServletRequest request) {
-        return response(HttpStatus.BAD_GATEWAY, exception.getMessage(), request);
-    }
-
-    @ExceptionHandler(UpstreamUnavailableException.class)
-    public ResponseEntity<ErrorResponse> handleUnavailable(UpstreamUnavailableException exception,
-                                                           HttpServletRequest request) {
-        return response(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
+    @ExceptionHandler(WebServiceException.class)
+    public ResponseEntity<ErrorResponse> handleSoapFailure(HttpServletRequest request) {
+        return response(HttpStatus.BAD_GATEWAY, "HR SOAP call failed", request);
     }
 
     @ExceptionHandler({
-            ConstraintViolationException.class,
             MethodArgumentTypeMismatchException.class,
             MissingServletRequestParameterException.class
     })
