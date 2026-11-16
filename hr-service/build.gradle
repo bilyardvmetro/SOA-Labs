@@ -12,6 +12,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.webjars:swagger-ui:5.18.2'
+    providedCompile project(':hr-contract')
+    compileOnly 'jakarta.ejb:jakarta.ejb-api:4.0.1'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
@@ -21,7 +23,7 @@ dependencies {
 
 tasks.register('frontendInstall', Exec) {
     workingDir frontendDirectory
-    commandLine 'npm', 'ci'
+    commandLine (System.getProperty('os.name').toLowerCase().contains('windows') ? 'npm.cmd' : 'npm'), 'ci'
 
     inputs.files(
             frontendDirectory.toPath().resolve('package.json').toFile(),
@@ -33,7 +35,7 @@ tasks.register('frontendInstall', Exec) {
 tasks.register('frontendBuild', Exec) {
     dependsOn 'frontendInstall'
     workingDir frontendDirectory
-    commandLine 'npm', 'run', 'build'
+    commandLine (System.getProperty('os.name').toLowerCase().contains('windows') ? 'npm.cmd' : 'npm'), 'run', 'build'
 
     inputs.dir frontendDirectory.toPath().resolve('src').toFile()
     inputs.files(
@@ -58,9 +60,13 @@ tasks.named('processResources') {
 }
 
 tasks.named('bootWar') {
-    archiveFileName = 'hr-service.war'
+    enabled = false
 }
 
 tasks.named('war') {
-    enabled = false
+    enabled = true
+    archiveFileName = 'hr-service.war'
 }
+
+configurations { webArchive }
+artifacts { webArchive tasks.named('war') }

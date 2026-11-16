@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence" version="3.0">
+  <persistence-unit name="workers" transaction-type="JTA">
+    <jta-data-source>java:/jdbc/WorkerDS</jta-data-source>
+    <class>org.example.soalabs.worker.domain.Worker</class>
+    <class>org.example.soalabs.worker.domain.Coordinates</class>
+    <class>org.example.soalabs.worker.domain.Organization</class>
+    <exclude-unlisted-classes>true</exclude-unlisted-classes>
+    <properties>
+      <property name="hibernate.hbm2ddl.auto" value="validate"/>
+      <property name="hibernate.jdbc.time_zone" value="UTC"/>
+    </properties>
+  </persistence-unit>
+</persistence>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jboss-deployment-structure xmlns="urn:jboss:deployment-structure:1.3">
+  <ear-subdeployments-isolated>true</ear-subdeployments-isolated>
+  <deployment>
+    <dependencies>
+      <module name="jakarta.ejb.api"/>
+      <module name="jakarta.validation.api"/>
+    </dependencies>
+    <exclude-subsystems><subsystem name="logging"/><subsystem name="jaxrs"/></exclude-subsystems>
+  </deployment>
+  <sub-deployment name="hr-ejb.jar">
+    <exclude-subsystems><subsystem name="logging"/><subsystem name="jaxrs"/></exclude-subsystems>
+  </sub-deployment>
+  <sub-deployment name="hr-service.war">
+    <exclude-subsystems><subsystem name="logging"/><subsystem name="jaxrs"/></exclude-subsystems>
+  </sub-deployment>
+</jboss-deployment-structure>
