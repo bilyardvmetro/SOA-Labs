@@ -56,6 +56,11 @@ public class SoapWorker {
         return result;
     }
 
+    public WorkerDto toDto() {
+        return new WorkerDto(id, name, coordinates.toDto(), creationDate, salary, startDate,
+                endDate, status, organization == null ? null : organization.toDto());
+    }
+
     @XmlType(name = "Coordinates", propOrder = {"x", "y"})
     @XmlAccessorType(XmlAccessType.FIELD)
     public static class Coordinates {
@@ -69,6 +74,10 @@ public class SoapWorker {
             result.x = coordinates.x();
             result.y = coordinates.y();
             return result;
+        }
+
+        private CoordinatesDto toDto() {
+            return new CoordinatesDto(x, y);
         }
     }
 
@@ -88,6 +97,10 @@ public class SoapWorker {
             result.annualTurnover = organization.annualTurnover();
             result.type = organization.type();
             return result;
+        }
+
+        private OrganizationDto toDto() {
+            return new OrganizationDto(fullName, annualTurnover, type);
         }
     }
 

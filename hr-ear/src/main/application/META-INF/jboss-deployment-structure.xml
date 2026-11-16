@@ -12,6 +12,9 @@
     <exclude-subsystems><subsystem name="logging"/><subsystem name="jaxrs"/></exclude-subsystems>
   </sub-deployment>
   <sub-deployment name="hr-service.war">
+    <dependencies>
+      <module name="org.apache.cxf.impl" services="import"/>
+    </dependencies>
     <exclude-subsystems><subsystem name="logging"/><subsystem name="jaxrs"/></exclude-subsystems>
   </sub-deployment>
 </jboss-deployment-structure>
