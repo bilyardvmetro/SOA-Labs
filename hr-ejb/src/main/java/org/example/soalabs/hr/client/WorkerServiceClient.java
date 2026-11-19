@@ -101,6 +101,9 @@ public class WorkerServiceClient {
         if (exception.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
             return new EntityConflictException(message != null ? message : "worker-service rejected the update");
         }
+        if (exception.getStatusCode().value() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
+            return new UpstreamUnavailableException(UNAVAILABLE);
+        }
         return new UpstreamBadGatewayException(INVALID_RESPONSE);
     }
 

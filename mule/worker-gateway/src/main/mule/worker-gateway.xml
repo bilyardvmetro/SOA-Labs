@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+
+    <configuration-properties file="gateway.properties"/>
+    <http:listener-config name="GatewayListener">
+        <http:listener-connection host="${gateway.host}" port="${gateway.port}"/>
+    </http:listener-config>
+    <http:request-config name="ConsulClient">
+        <http:request-connection host="${consul.host}" port="${consul.port}"/>
+    </http:request-config>
+    <http:request-config name="WorkerClient">
+        <!-- Every operation overrides the URL with the passing Consul instance. -->
+        <http:request-connection protocol="HTTPS" host="127.0.0.1" port="18443">
+            <tls:context>
+                <tls:trust-store path="${MULE_WORKER_TRUSTSTORE}" type="PKCS12"
+                                 password="${MULE_WORKER_TRUSTSTORE_PASSWORD}"/>
+            </tls:context>
+        </http:request-connection>
+    </http:request-config>
+
+    <flow name="gateway-health">
+        <http:listener config-ref="GatewayListener" path="/health" allowedMethods="GET"/>
+        <set-payload mimeType="application/json"
+                     value='{"status":"UP","component":"worker-gateway"}'/>
+    </flow>
+
+    <flow name="worker-proxy">
+        <http:listener config-ref="GatewayListener" path="/workers/*" allowedMethods="GET,POST,PUT">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.responseHeaders default {}]</http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="requestMethod" value="#[attributes.method]"/>
+        <set-variable variableName="requestPath" value="#[attributes.requestPath]"/>
+        <set-variable variableName="requestQuery" value="#[attributes.queryParams]"/>
+        <set-variable variableName="requestBody" value="#[payload]"/>
+
+        <http:request config-ref="ConsulClient" method="GET"
+                      path="/v1/health/service/worker-service" responseTimeout="${consul.timeout}"
+                      target="discovery" targetValue="#[message]" followRedirects="false">
+            <http:query-params>#[{'passing': 'true'}]</http:query-params>
+            <http:response-validator><http:success-status-code-validator values="100..599"/></http:response-validator>
+        </http:request>
+        <choice>
+            <when expression="#[vars.discovery.attributes.statusCode != 200]">
+                <raise-error type="APP:WORKER_UNAVAILABLE" description="Consul is unavailable"/>
+            </when>
+        </choice>
+        <set-variable variableName="workerEntries" value="#[vars.discovery.payload]"/>
+        <choice>
+            <when expression="#[not (vars.workerEntries is Array)]">
+                <raise-error type="APP:INVALID_DISCOVERY" description="Invalid Consul response"/>
+            </when>
+            <when expression="#[isEmpty(vars.workerEntries)]">
+                <raise-error type="APP:WORKER_UNAVAILABLE" description="No passing worker instance"/>
+            </when>
+        </choice>
+        <set-variable variableName="entry" value="#[vars.workerEntries[0]]"/>
+        <set-variable variableName="workerHost"
+                      value="#[if (isEmpty(vars.entry.Service.Address)) vars.entry.Node.Address else vars.entry.Service.Address]"/>
+        <choice>
+            <when expression="#[isEmpty(vars.workerHost) or not (vars.entry.Service.Port is Number)]">
+                <raise-error type="APP:INVALID_DISCOVERY" description="Invalid worker address"/>
+            </when>
+            <when expression="#[vars.entry.Service.Port &lt; 1 or vars.entry.Service.Port &gt; 65535 or (vars.entry.Service.Meta.scheme default 'https') != 'https']">
+                <raise-error type="APP:INVALID_DISCOVERY" description="Worker must expose a valid HTTPS endpoint"/>
+            </when>
+        </choice>
+        <logger level="INFO" category="worker-gateway"
+                message="#[output application/java --- correlationId ++ ' ' ++ vars.requestMethod ++ ' ' ++ vars.requestPath ++ ' via ' ++ vars.workerHost ++ ':' ++ (vars.entry.Service.Port as String)]"/>
+        <http:request config-ref="WorkerClient" method="#[vars.requestMethod]"
+                      url="#[output application/java --- 'https://' ++ vars.workerHost ++ ':' ++ (vars.entry.Service.Port as String) ++ vars.requestPath]"
+                      responseTimeout="${worker.timeout}" followRedirects="false">
+            <http:body>#[vars.requestBody]</http:body>
+            <http:headers>#[{'Accept': 'application/json'}]</http:headers>
+            <http:query-params>#[vars.requestQuery]</http:query-params>
+            <http:response-validator><http:success-status-code-validator values="100..599"/></http:response-validator>
+        </http:request>
+        <set-variable variableName="httpStatus" value="#[attributes.statusCode]"/>
+        <set-variable variableName="responseHeaders"
+                      value="#[{'Content-Type': attributes.headers.'content-type' default 'application/json'}]"/>
+        <logger level="INFO" category="worker-gateway"
+                message="#[correlationId ++ ' completed ' ++ (vars.httpStatus as String)]"/>
+        <error-handler>
+            <on-error-continue type="HTTP:CONNECTIVITY,HTTP:TIMEOUT,HTTP:RETRY_EXHAUSTED,APP:WORKER_UNAVAILABLE" logException="false">
+                <set-variable variableName="httpStatus" value="#[503]"/>
+                <set-variable variableName="responseHeaders" value="#[{'Content-Type': 'application/json'}]"/>
+                <set-payload value="#[output application/json --- {timestamp: now(), status: 503, error: 'Service Unavailable', message: 'worker-service is unavailable through Mule ESB', path: vars.requestPath default '/workers'}]"/>
+                <logger level="WARN" category="worker-gateway" message="#[correlationId ++ ' upstream unavailable: ' ++ error.description]"/>
+            </on-error-continue>
+            <on-error-continue type="ANY" logException="true">
+                <set-variable variableName="httpStatus" value="#[502]"/>
+                <set-variable variableName="responseHeaders" value="#[{'Content-Type': 'application/json'}]"/>
+                <set-payload value="#[output application/json --- {timestamp: now(), status: 502, error: 'Bad Gateway', message: 'Mule ESB upstream failure', path: vars.requestPath default '/workers'}]"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+</mule>

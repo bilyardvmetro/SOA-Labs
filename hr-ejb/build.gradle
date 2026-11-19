@@ -6,7 +6,11 @@ dependencies {
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'jakarta.platform:jakarta.jakartaee-api:10.0.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
+tasks.named('test') { useJUnitPlatform() }
 tasks.named('jar') { archiveFileName = 'hr-ejb.jar' }
 
 configurations {

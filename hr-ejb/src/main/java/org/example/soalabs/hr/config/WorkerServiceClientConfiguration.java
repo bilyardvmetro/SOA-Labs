@@ -7,11 +7,12 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import jakarta.ejb.*;
 import jakarta.validation.Validator;
-import org.example.soalabs.hr.client.ConsulDiscovery;
 import org.example.soalabs.hr.client.WorkerServiceClient;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.client.RestClient;
+
+import java.net.URI;
 
 @Singleton
 @Startup
@@ -22,7 +23,7 @@ public class WorkerServiceClientConfiguration {
     private Validator validator;
     private ObjectMapper mapper;
     private RestClient.Builder builder;
-    private ConsulDiscovery discovery;
+    private URI esbEndpoint;
 
     @PostConstruct
     void initialize() {
@@ -40,17 +41,16 @@ public class WorkerServiceClientConfiguration {
                     converters.removeIf(MappingJackson2HttpMessageConverter.class::isInstance);
                     converters.add(new MappingJackson2HttpMessageConverter(mapper));
                 });
-        discovery = new ConsulDiscovery(properties.consulUrl(), builder.clone().build());
+        esbEndpoint = properties.esbUrl();
     }
 
     public WorkerServiceClient client() {
-        // Discover before each operation: only passing services, no hard-coded fallback,
-        // no automatic replay of writes after a timeout.
-        return new WorkerServiceClient(builder.clone().baseUrl(discovery.resolve().toString()).build(), mapper, validator);
+        // Mule performs worker discovery. Never bypass the bus or replay writes after a timeout.
+        return new WorkerServiceClient(builder.clone().baseUrl(esbEndpoint.toString()).build(), mapper, validator);
     }
 
     public void health() {
         // Readiness covers this EJB and its dependencies, without making downstream writes.
-        if (discovery == null || validator == null) throw new IllegalStateException("HR EJB is not ready");
+        if (esbEndpoint == null || validator == null) throw new IllegalStateException("HR EJB is not ready");
     }
 }

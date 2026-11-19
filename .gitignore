@@ -42,3 +42,7 @@ out/
 .gradle-user/
 *.p12
 *.pem
+
+# Mule Maven build output and local dependency cache.
+mule/**/target/
+.maven-repository/
