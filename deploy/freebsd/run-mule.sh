@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Helios injects heap/Metaspace limits through _JAVA_OPTIONS; keep this
-# launcher's explicit memory settings instead of inheriting those overrides.
 unset _JAVA_OPTIONS JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS
 
 scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$scripts_dir/java-memory.sh"
 
-# Foreground launcher for the Mule 4.9.0 Kernel distribution.
-# Uses Mule's BasicWrapper instead of the bundled native Tanuki wrapper.
 export MULE_HOME="${MULE_HOME:-$HOME/soa4/mule-standalone-4.9.0}"
 export MULE_BASE="${MULE_BASE:-$MULE_HOME}"
 export JAVA_HOME="${JAVA_HOME:-/usr/local/openjdk17}"
@@ -25,8 +21,6 @@ if [[ ! -d "$MULE_HOME/lib/boot" || ! -d "$MULE_BASE/conf" ]]; then
 fi
 
 cd "$MULE_BASE"
-# Truffle 24.1.1 cannot choose its default resource cache on FreeBSD.
-# An explicit cache path avoids that OS-dependent lookup without spoofing os.name.
 mkdir -p "$MULE_BASE/.polyglot-cache"
 read -r -a mule_java_opts <<< "$MULE_JAVA_OPTS"
 if [[ -n "${MULE_GATEWAY_PORT:-}" ]]; then

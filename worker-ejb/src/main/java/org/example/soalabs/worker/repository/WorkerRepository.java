@@ -8,7 +8,6 @@ import org.springframework.data.jpa.repository.support.SimpleJpaRepository;
 import java.time.Instant;
 import java.util.List;
 
-// Called only inside a container-managed EJB transaction; no Spring context is started.
 public class WorkerRepository extends SimpleJpaRepository<Worker, Integer> {
     private final EntityManager em;
 

@@ -16,7 +16,6 @@
         <http:request-connection host="${consul.host}" port="${consul.port}"/>
     </http:request-config>
     <http:request-config name="WorkerClient">
-        <!-- Every operation overrides the URL with the passing Consul instance. -->
         <http:request-connection protocol="HTTPS" host="127.0.0.1" port="18443">
             <tls:context>
                 <tls:trust-store path="${MULE_WORKER_TRUSTSTORE}" type="PKCS12"

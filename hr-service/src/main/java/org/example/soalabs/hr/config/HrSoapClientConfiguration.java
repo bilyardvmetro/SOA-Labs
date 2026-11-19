@@ -24,7 +24,6 @@ public class HrSoapClientConfiguration {
         factory.setEndpointName(new QName(HrPort.NAMESPACE, "HrPort"));
 
         HrPort port = factory.create(HrPort.class);
-        // Keep request context isolated when the proxy serves concurrent REST calls.
         ((BindingProvider) port).getRequestContext().put("thread.local.request.context", "true");
 
         HTTPClientPolicy policy = new HTTPClientPolicy();

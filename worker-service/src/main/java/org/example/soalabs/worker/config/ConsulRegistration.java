@@ -55,7 +55,6 @@ public class ConsulRegistration {
         register();
     }
 
-    // Re-register after an agent restart or critical-service eviction.
     @Scheduled(initialDelay = 30000, fixedDelay = 30000)
     public synchronized void register() {
         if (!ready) return;

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Source in the Helios Bash session used to start the lab services.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     printf 'Load this file with: source "$HOME/soa4/lab4-env.sh"\n' >&2
     exit 1
@@ -23,7 +22,6 @@ export WORKER_EJB_POOL_MAX=4
 export HR_EJB_POOL_MAX=3
 export WORKER_EJB_USERNAME=worker-client
 export WORKER_EJB_URL=remote+http://127.0.0.1:19080
-# The existing Helios Tomcat server.xml listens on 28443 (confirmed by health).
 export WORKER_PUBLIC_URL=https://127.0.0.1:28443
 export WORKER_INSTANCE_ID=worker-1
 export WORKER_SERVICE_CONNECT_TIMEOUT=3s

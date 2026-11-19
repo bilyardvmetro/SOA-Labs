@@ -45,12 +45,10 @@ public class WorkerServiceClientConfiguration {
     }
 
     public WorkerServiceClient client() {
-        // Mule performs worker discovery. Never bypass the bus or replay writes after a timeout.
         return new WorkerServiceClient(builder.clone().baseUrl(esbEndpoint.toString()).build(), mapper, validator);
     }
 
     public void health() {
-        // Readiness covers this EJB and its dependencies, without making downstream writes.
         if (esbEndpoint == null || validator == null) throw new IllegalStateException("HR EJB is not ready");
     }
 }

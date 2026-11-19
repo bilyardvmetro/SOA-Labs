@@ -15,7 +15,6 @@ public class PersistenceErrors {
     public Object translate(InvocationContext context) throws Exception {
         try {
             Object result = context.proceed();
-            // Surface DB constraints before returning across the remote EJB boundary.
             em.flush();
             return result;
         } catch (PersistenceException exception) {

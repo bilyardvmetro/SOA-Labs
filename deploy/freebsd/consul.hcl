@@ -1,4 +1,3 @@
-# Single-node lab agent, isolated high ports. Not -dev: state persists.
 server = true
 bootstrap_expect = 1
 node_name = "soa-lab3"

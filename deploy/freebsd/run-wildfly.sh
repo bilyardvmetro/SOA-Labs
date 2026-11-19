@@ -16,7 +16,6 @@ done
 scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$scripts_dir/java-memory.sh"
 unset _JAVA_OPTIONS JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS
-# WildFly 33 reads RUN_CONF; STANDALONE_CONF does not select its JVM config.
 export RUN_CONF=/dev/null
 export COMMON_CONF=/dev/null
 export JAVA="$JAVA_HOME/bin/java"
